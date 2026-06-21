@@ -116,7 +116,7 @@ def mocked_graph(monkeypatch, debatable_bundle, hard_routed_bundle):
     scores[Category.CSAE] = 0.95
     fake_classification = ClassificationResult(scores=scores, detected_language="en")
 
-    monkeypatch.setattr(graph_module, "get_instructor_client", lambda: object())
+    monkeypatch.setattr(graph_module, "get_instructor_client", lambda api_key=None: object())
     monkeypatch.setattr(graph_module, "classify", lambda client, content: fake_classification)
 
     def fake_run_stance_turn(client, stance, content, bundle, prior_turns, model=None):
@@ -172,7 +172,7 @@ def test_full_graph_hard_routed_category_has_no_transcript(mocked_graph):
 
 def test_full_graph_with_benign_content_produces_no_verdicts(monkeypatch):
     benign_classification = ClassificationResult(scores={c: 0.0 for c in Category}, detected_language="en")
-    monkeypatch.setattr(graph_module, "get_instructor_client", lambda: object())
+    monkeypatch.setattr(graph_module, "get_instructor_client", lambda api_key=None: object())
     monkeypatch.setattr(graph_module, "classify", lambda client, content: benign_classification)
 
     compiled = graph_module.build_graph().compile()

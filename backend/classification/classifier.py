@@ -10,6 +10,7 @@ import instructor
 
 from backend.classification.prompts import CLASSIFIER_SYSTEM_PROMPT
 from backend.clients.groq_client import DEFAULT_MODEL
+from backend.clients.retry_policy import MAX_RETRIES
 from backend.exceptions import ClassificationError
 from backend.models.classification import ClassificationResult
 
@@ -19,6 +20,7 @@ def classify(client: instructor.Instructor, content: str, model: str = DEFAULT_M
         return client.chat.completions.create(
             model=model,
             response_model=ClassificationResult,
+            max_retries=MAX_RETRIES,
             messages=[
                 {"role": "system", "content": CLASSIFIER_SYSTEM_PROMPT},
                 {"role": "user", "content": content},

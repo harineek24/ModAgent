@@ -10,11 +10,21 @@ st.title("ModAgent — Dynamic Parallel Debate Content Moderation")
 
 init_session_state()
 
+with st.sidebar:
+    st.text_input(
+        "Groq API key",
+        type="password",
+        key="groq_api_key",
+        help="Used only for this session, kept in browser session state, never written to disk.",
+    )
+
 content, submitted = render_input_panel()
 
-if submitted and content.strip():
+if submitted and not st.session_state.groq_api_key:
+    st.error("Enter a Groq API key in the sidebar first.")
+elif submitted and content.strip():
     with st.spinner("Running classification + debate..."):
-        result = run(content)
+        result = run(content, api_key=st.session_state.groq_api_key)
     record_run(content, result)
 
 if st.session_state.result is not None:

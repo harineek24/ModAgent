@@ -5,6 +5,7 @@ given stance, scoped to a single category's ContextBundle.
 import instructor
 
 from backend.clients.groq_client import DEFAULT_MODEL
+from backend.clients.retry_policy import MAX_RETRIES
 from backend.debate.prompts import ADVOCATE_SYSTEM_PROMPT, ENFORCER_SYSTEM_PROMPT
 from backend.models.debate import DebateTurn
 from backend.models.routing import ContextBundle
@@ -40,6 +41,7 @@ def run_stance_turn(
     return client.chat.completions.create(
         model=model,
         response_model=DebateTurn,
+        max_retries=MAX_RETRIES,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},

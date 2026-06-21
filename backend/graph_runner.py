@@ -15,9 +15,11 @@ def _get_compiled_graph():
     return _compiled_graph
 
 
-def run(content: str) -> ModerationResult:
+def run(content: str, api_key: str | None = None) -> ModerationResult:
     graph = _get_compiled_graph()
-    final_state = graph.invoke({"content": content, "verdicts": [], "transcripts": []})
+    final_state = graph.invoke(
+        {"content": content, "api_key": api_key, "verdicts": [], "transcripts": []}
+    )
     return ModerationResult(
         verdicts=final_state["verdicts"],
         transcripts=final_state["transcripts"],

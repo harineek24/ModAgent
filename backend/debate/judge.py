@@ -6,6 +6,7 @@ category routes to escalation rather than allow.
 import instructor
 
 from backend.clients.groq_client import DEFAULT_MODEL
+from backend.clients.retry_policy import MAX_RETRIES
 from backend.debate.prompts import JUDGE_SYSTEM_PROMPT
 from backend.debate.termination import turns_agree
 from backend.models.debate import DebateTurn, Verdict
@@ -54,6 +55,7 @@ def reach_verdict(
     return client.chat.completions.create(
         model=model,
         response_model=Verdict,
+        max_retries=MAX_RETRIES,
         messages=[
             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
             {"role": "user", "content": user_message},

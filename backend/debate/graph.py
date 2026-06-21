@@ -25,6 +25,7 @@ from backend.routing.router import route
 
 class GraphState(TypedDict):
     content: str
+    api_key: str | None
     classification_scores: dict
     destinations: list[ContextBundle]
     hard_routed: list[ContextBundle]
@@ -34,6 +35,7 @@ class GraphState(TypedDict):
 
 class DebateState(TypedDict):
     content: str
+    api_key: str | None
     bundle: ContextBundle
     round_number: int
     advocate_turns: list[DebateTurn]
@@ -43,7 +45,7 @@ class DebateState(TypedDict):
 
 
 def intake_and_classify_node(state: GraphState) -> dict:
-    client = get_instructor_client()
+    client = get_instructor_client(state.get("api_key"))
     result = classify(client, state["content"])
     return {"classification_scores": result}
 
@@ -58,10 +60,14 @@ def route_node(state: GraphState) -> dict:
 
 
 def dispatch_to_debates(state: GraphState):
-    sends = [Send("debate_subgraph", {"content": state["content"], "bundle": bundle})
-             for bundle in state["destinations"]]
-    sends += [Send("hard_route_verdict", {"content": state["content"], "bundle": bundle})
-              for bundle in state["hard_routed"]]
+    sends = [
+        Send("debate_subgraph", {"content": state["content"], "api_key": state.get("api_key"), "bundle": bundle})
+        for bundle in state["destinations"]
+    ]
+    sends += [
+        Send("hard_route_verdict", {"content": state["content"], "bundle": bundle})
+        for bundle in state["hard_routed"]
+    ]
     return sends
 
 
@@ -79,7 +85,7 @@ def hard_route_verdict_node(state: dict) -> dict:
 
 
 def debate_round_node(state: DebateState) -> dict:
-    client = get_instructor_client()
+    client = get_instructor_client(state.get("api_key"))
     bundle = state["bundle"]
     round_number = state.get("round_number", 0) + 1
 
@@ -106,7 +112,7 @@ def debate_continue_edge(state: DebateState) -> str:
 
 
 def judge_node(state: DebateState) -> dict:
-    client = get_instructor_client()
+    client = get_instructor_client(state.get("api_key"))
     verdict = reach_verdict(
         client,
         state["content"],
