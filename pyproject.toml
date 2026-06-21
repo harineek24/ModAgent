@@ -1,0 +1,31 @@
+[project]
+name = "modagent"
+version = "0.1.0"
+description = "Dynamic parallel debate graph for content moderation using LangGraph, Groq, and Streamlit"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2",
+    "langchain-groq>=0.2",
+    "groq>=0.11",
+    "instructor>=1.5",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "streamlit>=1.38",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.14",
+    "hypothesis>=6.110",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "app*"]
