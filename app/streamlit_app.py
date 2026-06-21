@@ -30,7 +30,7 @@ if submitted and not st.session_state.groq_api_key:
 elif submitted and content.strip():
     with st.spinner("Running classification + debate..."):
         result = run(content, api_key=st.session_state.groq_api_key)
-    record_run(content, result)
+    record_run(result)
 
 if st.session_state.result is not None:
     render_verdicts(st.session_state.result)

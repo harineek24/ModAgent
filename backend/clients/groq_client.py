@@ -5,7 +5,7 @@ from groq import Groq
 
 from backend.exceptions import ModAgentError
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 
 def get_instructor_client(api_key: str | None = None) -> instructor.Instructor:

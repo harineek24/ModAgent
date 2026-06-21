@@ -5,7 +5,6 @@ description = "Dynamic parallel debate graph for content moderation using LangGr
 requires-python = ">=3.11"
 dependencies = [
     "langgraph>=0.2",
-    "langchain-groq>=0.2",
     "groq>=0.11",
     "instructor>=1.5",
     "pydantic>=2.7",
@@ -16,7 +15,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
-    "pytest-mock>=3.14",
     "hypothesis>=6.110",
 ]
 
