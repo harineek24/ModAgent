@@ -22,22 +22,9 @@ def get_instructor_client(api_key: str | None = None) -> instructor.Instructor:
     underlying Groq client's create() call, which collides with instructor's own
     max_retries handling if passed at construction time.
     """
-    resolved_key = (api_key or os.environ.get("GROQ_API_KEY") or "").strip()
+    resolved_key = api_key or os.environ.get("GROQ_API_KEY")
     if not resolved_key:
         raise ModAgentError("No Groq API key provided (pass api_key or set GROQ_API_KEY).")
-    try:
-        resolved_key.encode("ascii")
-    except UnicodeEncodeError as exc:
-        # The key is sent verbatim in the Authorization header, which httpx
-        # encodes as strict ASCII. A key copy-pasted with stray non-ASCII
-        # characters (smart quotes, NBSP, zero-width chars) crashes deep
-        # inside httpx with a cryptic UnicodeEncodeError that looks like a
-        # content-classification failure rather than a bad key. Fail fast
-        # here with a clear message instead.
-        raise ModAgentError(
-            "Groq API key contains non-ASCII characters -- check for stray characters from "
-            "copy-pasting (e.g. smart quotes or extra whitespace) and re-enter it."
-        ) from exc
 
     raw_client = Groq(api_key=resolved_key)
     return instructor.from_groq(raw_client, mode=instructor.Mode.JSON)
