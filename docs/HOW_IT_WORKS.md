@@ -2,127 +2,159 @@
 
 ---
 
-## Slide 1 — What problem is this solving?
+## Slide 1 — What problem are we solving?
 
-Content moderation decisions are rarely black-and-white. A single "is this
-allowed?" classifier either over-flags (kills engagement) or under-flags
-(misses real harm). ModAgent's bet: **debate the borderline cases** with two
-opposing LLM personas, and only escalate to a human when the debate
-genuinely doesn't resolve.
+Most automated content moderation tools force a single AI model to make a
+yes-or-no call on a piece of content, and that single model is either too
+strict (it blocks harmless content and frustrates users) or too lenient (it
+misses real harm). ModAgent takes a different approach: for any borderline
+case, it has two AI personas argue opposite sides of the question, and only
+asks a human to step in when that argument genuinely cannot be settled.
 
-- **Classifier**: scores content against 15 policy categories.
-- **Router**: pure, deterministic, no LLM — decides per category whether it's
-  *hard-routed* (always escalate, no debate), *debatable*, or *benign*.
-- **Debate**: Advocate vs. Enforcer argue it out, per category, in parallel.
-- **Judge**: reads the debate, returns allow / restrict / escalate.
+The system does four things, in order, for every piece of content:
+
+1. It scores the content against fifteen policy categories (hate speech,
+   harassment, violence, spam, and so on).
+2. It decides, for each category that scored high enough, whether the
+   category is even allowed to be debated, or whether it must go straight
+   to a human.
+3. For everything that can be debated, it runs a structured back-and-forth
+   between an Advocate (who leans toward allowing content) and an Enforcer
+   (who leans toward restricting it).
+4. A Judge reads that back-and-forth and reaches a final decision: allow,
+   restrict, or escalate to a human.
 
 ---
 
-## Slide 2 — End-to-end flow
+## Slide 2 — The path content takes through the system
 
 ```mermaid
 flowchart LR
-    A[Content] --> B[Classify\n15 category scores]
-    B --> C[Route\npure function, no LLM]
-    C -->|score below threshold| D[Benign\nno verdict]
-    C -->|non-debatable category\ne.g. CSAE, self-harm| E[Hard-route\nauto-escalate]
-    C -->|debatable category| F[Debate subgraph\nfan-out per category]
-    F --> G[Judge]
-    E --> H[Verdict]
+    A[Content submitted] --> B[Step 1: Classify\nScore against 15 categories]
+    B --> C[Step 2: Route\nA plain rule, no AI involved]
+    C -->|Score too low| D[Treated as benign\nNo verdict needed]
+    C -->|Category is too sensitive to debate\ne.g. child safety, self-harm, terrorism| E[Sent straight to a human]
+    C -->|Category is open to debate| F[Sent to the debate step\nrunning once per flagged category]
+    F --> G[Step 4: Judge reads the debate\nand decides]
+    E --> H[Final result for this category]
     G --> H
-    H --> I[ModerationResult\nverdicts + transcripts]
+    H --> I[All results are combined\ninto one report for the user]
 ```
 
-Each category that clears the score threshold runs through its **own**
-branch in parallel — LangGraph's `Send` API fans out one subgraph
-invocation per category, all running concurrently, then fans the
-results back in.
+Every category that is flagged runs through its own debate at the same
+time as the others, rather than one after another. This is why the system
+can review several categories in roughly the same amount of time it would
+take to review one.
 
 ---
 
-## Slide 3 — Classification & routing
+## Slide 3 — How content gets sorted before any debate happens
 
-The classifier is the only place an LLM scores raw content. It returns one
-float (0–1) per category. The router is then **pure Python, zero
-network calls** — fully unit-tested without ever touching an LLM:
+This sorting step is deliberately simple and predictable: it is plain
+code, with no AI model involved, so its behavior can be tested and trusted
+completely. It asks two questions about each category that scored high
+enough to matter:
 
 ```mermaid
 flowchart TD
-    S[score ≥ threshold?] -->|no| Benign
-    S -->|yes| D{policy.debatable?}
-    D -->|false| HR[Hard-routed\nalways escalate]
-    D -->|true| DB[Goes to debate]
+    S["Did this category score high enough\nto be worth reviewing?"] -->|No| Benign[Ignore it]
+    S -->|Yes| D{"Is this category allowed\nto be debated at all?"}
+    D -->|No| HR["Send straight to a human\nNo debate happens"]
+    D -->|Yes| DB[Send to the debate step]
 ```
 
-Categories like `csae`, `self_harm_suicide`, `terrorism_extremism` are
-**non-debatable by policy config** — they never reach an LLM debate at all,
-by design (fail-closed for the worst-case categories).
+Some categories — currently child sexual abuse material, self-harm and
+suicide content, and terrorism or extremism — are configured to never go
+through debate, no matter what. This is a deliberate safety choice: the
+worst categories should never depend on an AI argument resolving in time;
+they go to a human immediately.
 
 ---
 
-## Slide 4 — The debate subgraph (per category)
+## Slide 4 — What happens inside a debate
 
 ```mermaid
 flowchart TD
-    R1[Round N: Advocate argues] --> R2[Round N: Enforcer argues]
-    R2 --> Check{Same position\n+ both confidence ≥ 0.85?}
-    Check -->|yes, agree| J[Judge]
-    Check -->|no, and rounds < 3| R1
-    Check -->|no, rounds = 3 max| J
-    J --> V[Verdict]
+    R1[The Advocate gives an opinion\nand a confidence level] --> R2[The Enforcer gives an opinion\nand a confidence level]
+    R2 --> Check{"Did they reach the same opinion,\nand are both confident enough?"}
+    Check -->|Yes, they agree| J[Send the transcript to the Judge]
+    Check -->|No, and there is still time for another round| R1
+    Check -->|No, but they have already used all three rounds| J
+    J --> V[The Judge reaches a final decision]
 ```
 
-- **Advocate**: free-expression-leaning — argues against over-moderation.
-- **Enforcer**: risk-leaning — argues against under-moderation.
-- Both must answer with `position` ∈ `{allow, restrict, escalate}` — a fixed
-  vocabulary (this was a real bug we just fixed: free-text positions like
-  *"Harmful But Contextual"* vs. *"hate speech and harassment"* could never
-  match, so debates always looked unresolved).
+The Advocate is instructed to argue for giving the content the benefit of
+the doubt, while still admitting when a violation is obvious. The Enforcer
+is instructed to argue for caution, while still admitting when content is
+clearly harmless. Each side must state its opinion as one of exactly three
+words: "allow," "restrict," or "escalate," so that the two opinions can be
+compared directly. Earlier in development, the two sides were allowed to
+phrase their opinions in their own words, which meant their answers could
+never really be compared to each other, and debates almost always looked
+unresolved even when both sides actually agreed. That has since been
+fixed.
 
 ---
 
-## Slide 5 — Why "ESCALATE" shows up so often
+## Slide 5 — Why a result sometimes says "needs human review"
 
-The Judge is **fail-closed by construction** — it never needs to call an LLM
-to decide to escalate:
+A category is sent to a human, instead of being resolved automatically,
+for one of four specific reasons, and the system now records which reason
+applied so it can be shown to the user instead of one generic message:
 
-1. **Non-debatable category** → always escalate, no LLM call.
-2. **Unresolved disagreement + `escalate_on_tie: true`** → always escalate,
-   no LLM call. ("Unresolved" = positions differ, or either side's
-   confidence is below 0.85, even after 3 rounds.)
-3. Otherwise → LLM Judge weighs both arguments and decides allow / restrict
-   / escalate.
+1. **The category is never debated.** Some categories are too sensitive to
+   leave to an AI argument, by policy, regardless of what either side
+   would say.
+2. **The two sides reached different opinions.** The Advocate and the
+   Enforcer disagreed even after using all of their allowed rounds.
+3. **The two sides agreed, but weren't confident enough.** Both said the
+   same thing, but neither was confident enough in that answer for the
+   system to trust it without a human checking.
+4. **The Judge itself decided to escalate.** Even when the two sides agree
+   confidently, the Judge — which separately reviews the full argument —
+   can still decide that a human should make the final call.
 
-Most policy categories ship with `escalate_on_tie: true` — that's a
-deliberate safety default, not a bug. The thing that *was* a bug: the
-Advocate/Enforcer almost never could agree on `position` because they used
-different free-text wording, so case 2 fired far more than it should have.
-Fixed now by constraining `position` to `allow` / `restrict` / `escalate`.
-
----
-
-## Slide 6 — What a result actually contains
-
-```python
-ModerationResult(
-    verdicts=[Verdict(category, decision, confidence, rationale,
-                       cited_clauses, escalated)],
-    transcripts=[DebateTranscript(category, advocate_turns, enforcer_turns)],
-)
-```
-
-- One `Verdict` per category that cleared the threshold (not all 15).
-- A `DebateTranscript` only exists for categories that actually debated —
-  hard-routed categories skip the debate entirely, so they have no
-  transcript (this is expected, not a missing-data bug).
+Most categories are configured so that any unresolved disagreement
+defaults to "send to a human" rather than "allow it anyway." This is a
+deliberate, cautious default, not a flaw.
 
 ---
 
-## Slide 7 — Where this can go next
+## Slide 6 — What a finished result actually contains
 
-- Tune `AGREEMENT_CONFIDENCE_THRESHOLD` / `MAX_ROUNDS` against the golden
-  dataset now that `position` actually means something comparable.
-- Surface *why* a category escalated (non-debatable vs. disagreement vs.
-  low confidence) directly in the UI instead of one generic message.
-- Add a single "Overall" banner (allow / needs review / restricted) instead
-  of making the user scan a list to find the worst outcome.
+For a single piece of content, the final result lists one outcome per
+category that was flagged (not all fifteen categories, only the ones that
+scored high enough to matter). For each flagged category, the result
+includes:
+
+- The final decision: allow, restrict, or escalate.
+- How confident the system was in that decision.
+- A plain-language explanation of why that decision was reached.
+- The exact policy wording that the decision was based on.
+- If a debate actually happened for that category, the full back-and-forth
+  between the Advocate and the Enforcer, so a human reviewer can see
+  exactly how the disagreement unfolded.
+
+Categories that went straight to a human, without a debate, will not have
+a back-and-forth to show — that is expected, not a missing piece of data.
+
+---
+
+## Slide 7 — What's still worth improving
+
+- The thresholds that decide how confident is "confident enough," and how
+  many rounds of debate are allowed before giving up, were chosen as
+  reasonable starting points. They have not yet been tuned against real
+  recorded debates, because we don't yet have a collected set of real
+  debates to learn from. A tool now exists to do that tuning properly once
+  that data exists, rather than guessing at better numbers.
+- The dataset currently used to test the sorting step (Slide 3) only
+  checks that categories get sorted correctly — it does not contain any
+  example debates, so it cannot currently be used to judge whether the
+  debate step itself is working well. Building a second dataset that
+  includes example debates and their expected outcomes would close that
+  gap.
+- The Streamlit app already shows one overall verdict for the whole piece
+  of content (allowed, restricted, or needs human review) above the
+  per-category breakdown, so a reviewer doesn't have to scan the full list
+  just to tell whether anything needs attention.
