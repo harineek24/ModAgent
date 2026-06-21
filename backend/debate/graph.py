@@ -141,11 +141,26 @@ def build_debate_subgraph() -> StateGraph:
     return subgraph
 
 
+def make_debate_subgraph_node(compiled_subgraph):
+    """Wraps the compiled debate subgraph so only the fan-in keys
+    (verdicts, transcripts) propagate to the parent graph. Parallel
+    Send branches share the parent's content/api_key channels, which
+    are plain last-value channels; returning those fields from every
+    branch causes an INVALID_CONCURRENT_GRAPH_UPDATE error.
+    """
+
+    def _run(state: DebateState) -> dict:
+        result = compiled_subgraph.invoke(state)
+        return {"verdicts": result["verdicts"], "transcripts": result["transcripts"]}
+
+    return _run
+
+
 def build_graph() -> StateGraph:
     graph = StateGraph(GraphState)
     graph.add_node("intake_and_classify", intake_and_classify_node)
     graph.add_node("route", route_node)
-    graph.add_node("debate_subgraph", build_debate_subgraph().compile())
+    graph.add_node("debate_subgraph", make_debate_subgraph_node(build_debate_subgraph().compile()))
     graph.add_node("hard_route_verdict", hard_route_verdict_node)
 
     graph.set_entry_point("intake_and_classify")
