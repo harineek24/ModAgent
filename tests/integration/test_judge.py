@@ -123,33 +123,6 @@ def test_disagreement_without_escalate_on_tie_falls_through_to_llm(policy_table)
     assert verdict == expected_verdict
 
 
-def test_restrict_vs_escalate_disagreement_is_not_a_tie_falls_through_to_llm(policy_table):
-    """Both sides agree a violation occurred (neither said "allow") and are
-    highly confident -- they only differ on remedy severity. This must not be
-    treated the same as a real tie like "allow" vs. "escalate"; the Judge
-    should get a chance to weigh it instead of an automatic fail-closed
-    escalation.
-    """
-    bundle = make_bundle(policy_table, Category.HATE_SPEECH)  # escalate_on_tie=True
-    expected_verdict = Verdict(
-        category=Category.HATE_SPEECH,
-        decision="escalate",
-        confidence=0.97,
-        rationale="judge weighed both severe positions",
-        cited_clauses=[],
-        escalated=True,
-    )
-    client = StubInstructorClient(response=expected_verdict)
-    advocate = make_turn("advocate", "restrict", 0.98)
-    enforcer = make_turn("enforcer", "escalate", 0.99)
-
-    verdict = reach_verdict(client, "content", bundle, advocate, enforcer)
-
-    assert client.called is True
-    assert verdict.decision == "escalate"
-    assert verdict.escalation_reason == "judge_escalated"
-
-
 def test_llm_escalate_decision_gets_judge_escalated_reason(policy_table):
     bundle = make_bundle(policy_table, Category.SPAM_SCAM)  # escalate_on_tie=False
     expected_verdict = Verdict(

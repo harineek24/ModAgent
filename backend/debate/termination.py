@@ -27,17 +27,6 @@ def disagreement_reason(advocate_turn: DebateTurn, enforcer_turn: DebateTurn) ->
     return "low_confidence"
 
 
-def both_acknowledge_violation(advocate_turn: DebateTurn, enforcer_turn: DebateTurn) -> bool:
-    """True when neither side thinks the content should be allowed -- i.e. the
-    Advocate's free-expression mandate caps out at "restrict" while the
-    Enforcer's caution mandate reaches "escalate", but both agree something is
-    wrong. This is a disagreement about remedy severity, not about whether a
-    violation occurred, and shouldn't be treated the same as a real tie
-    (e.g. "allow" vs. "escalate") for fail-closed tie-breaking purposes.
-    """
-    return advocate_turn.position != "allow" and enforcer_turn.position != "allow"
-
-
 def should_continue_debate(round_number: int, advocate_turn: DebateTurn, enforcer_turn: DebateTurn) -> bool:
     if round_number >= MAX_ROUNDS:
         return False
