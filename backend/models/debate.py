@@ -1,11 +1,19 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from backend.models.category import Category
 
+# Constrained to a fixed vocabulary so the Advocate's and Enforcer's
+# positions are directly comparable -- free text ("Harmful But Contextual"
+# vs. "hate speech and harassment") never matches and made every debate
+# look unresolved.
+Position = Literal["allow", "restrict", "escalate"]
+
 
 class DebateTurn(BaseModel):
     stance: str
-    position: str
+    position: Position
     confidence: float
     rationale: str
     cited_clauses: list[str] = Field(default_factory=list)
