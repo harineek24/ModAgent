@@ -24,3 +24,16 @@ OPENAI_TO_INTERNAL = {
 }
 
 EXCLUDED_FROM_AUTO_IMPORT = {"sexual/minors"}
+
+# Column codes used specifically by the openai/moderation-api-release samples-1680.jsonl
+# dataset (the "Holistic Approach to Undesired Content Detection" eval set).
+DATASET_CODE_TO_OPENAI_LABEL = {
+    "S": "sexual",
+    "H": "hate",
+    "V": "violence",
+    "HR": "harassment",
+    "SH": "self-harm",
+    "S3": "sexual/minors",
+    "H2": "hate/threatening",
+    "V2": "violence/graphic",
+}
