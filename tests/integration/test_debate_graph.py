@@ -139,23 +139,35 @@ def mocked_graph(monkeypatch, debatable_bundle, hard_routed_bundle):
 
 
 def test_full_graph_produces_one_verdict_per_routed_category(mocked_graph):
-    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": []})
+    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
     verdict_categories = {v.category for v in final_state["verdicts"]}
     assert verdict_categories == {Category.HATE_SPEECH, Category.CSAE}
 
 
 def test_full_graph_hard_routed_category_is_always_escalated(mocked_graph):
-    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": []})
+    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
     csae_verdict = next(v for v in final_state["verdicts"] if v.category == Category.CSAE)
     assert csae_verdict.escalated is True
     assert csae_verdict.decision == "escalate"
 
 
 def test_full_graph_debatable_category_resolves_via_debate_subgraph(mocked_graph):
-    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": []})
+    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
     hate_verdict = next(v for v in final_state["verdicts"] if v.category == Category.HATE_SPEECH)
     assert hate_verdict.decision == "restrict"
     assert hate_verdict.escalated is False
+
+
+def test_full_graph_debatable_category_produces_transcript_with_turns(mocked_graph):
+    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
+    transcript = next(t for t in final_state["transcripts"] if t.category == Category.HATE_SPEECH)
+    assert len(transcript.advocate_turns) >= 1
+    assert len(transcript.enforcer_turns) >= 1
+
+
+def test_full_graph_hard_routed_category_has_no_transcript(mocked_graph):
+    final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
+    assert not any(t.category == Category.CSAE for t in final_state["transcripts"])
 
 
 def test_full_graph_with_benign_content_produces_no_verdicts(monkeypatch):
@@ -164,5 +176,5 @@ def test_full_graph_with_benign_content_produces_no_verdicts(monkeypatch):
     monkeypatch.setattr(graph_module, "classify", lambda client, content: benign_classification)
 
     compiled = graph_module.build_graph().compile()
-    final_state = compiled.invoke({"content": "nothing wrong here", "verdicts": []})
+    final_state = compiled.invoke({"content": "nothing wrong here", "verdicts": [], "transcripts": []})
     assert final_state["verdicts"] == []

@@ -14,8 +14,8 @@ content, submitted = render_input_panel()
 
 if submitted and content.strip():
     with st.spinner("Running classification + debate..."):
-        verdicts = run(content)
-    record_run(content, verdicts)
+        result = run(content)
+    record_run(content, result)
 
-if st.session_state.verdicts is not None:
-    render_verdicts(st.session_state.verdicts)
+if st.session_state.result is not None:
+    render_verdicts(st.session_state.result)

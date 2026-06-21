@@ -17,7 +17,7 @@ from backend.clients.groq_client import get_instructor_client
 from backend.debate.judge import reach_verdict
 from backend.debate.superagents import run_stance_turn
 from backend.debate.termination import should_continue_debate
-from backend.models.debate import DebateTurn, Verdict
+from backend.models.debate import DebateTranscript, DebateTurn, Verdict
 from backend.models.routing import ContextBundle
 from backend.routing.policy_loader import load_policy_table
 from backend.routing.router import route
@@ -29,6 +29,7 @@ class GraphState(TypedDict):
     destinations: list[ContextBundle]
     hard_routed: list[ContextBundle]
     verdicts: Annotated[list[Verdict], operator.add]
+    transcripts: Annotated[list[DebateTranscript], operator.add]
 
 
 class DebateState(TypedDict):
@@ -38,6 +39,7 @@ class DebateState(TypedDict):
     advocate_turns: list[DebateTurn]
     enforcer_turns: list[DebateTurn]
     verdicts: Annotated[list[Verdict], operator.add]
+    transcripts: Annotated[list[DebateTranscript], operator.add]
 
 
 def intake_and_classify_node(state: GraphState) -> dict:
@@ -112,7 +114,12 @@ def judge_node(state: DebateState) -> dict:
         state["advocate_turns"][-1],
         state["enforcer_turns"][-1],
     )
-    return {"verdicts": [verdict]}
+    transcript = DebateTranscript(
+        category=state["bundle"].category,
+        advocate_turns=state["advocate_turns"],
+        enforcer_turns=state["enforcer_turns"],
+    )
+    return {"verdicts": [verdict], "transcripts": [transcript]}
 
 
 def build_debate_subgraph() -> StateGraph:

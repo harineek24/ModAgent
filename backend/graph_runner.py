@@ -3,7 +3,7 @@ used by both the Streamlit app and tests/CLI/batch eval without any UI coupling.
 """
 
 from backend.debate.graph import build_graph
-from backend.models.debate import Verdict
+from backend.models.debate import ModerationResult
 
 _compiled_graph = None
 
@@ -15,7 +15,10 @@ def _get_compiled_graph():
     return _compiled_graph
 
 
-def run(content: str) -> list[Verdict]:
+def run(content: str) -> ModerationResult:
     graph = _get_compiled_graph()
-    final_state = graph.invoke({"content": content, "verdicts": []})
-    return final_state["verdicts"]
+    final_state = graph.invoke({"content": content, "verdicts": [], "transcripts": []})
+    return ModerationResult(
+        verdicts=final_state["verdicts"],
+        transcripts=final_state["transcripts"],
+    )
