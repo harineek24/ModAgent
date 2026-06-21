@@ -37,6 +37,7 @@ class DebateState(TypedDict):
     round_number: int
     advocate_turns: list[DebateTurn]
     enforcer_turns: list[DebateTurn]
+    verdicts: Annotated[list[Verdict], operator.add]
 
 
 def intake_and_classify_node(state: GraphState) -> dict:
