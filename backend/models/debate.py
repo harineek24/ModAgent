@@ -19,6 +19,9 @@ class DebateTurn(BaseModel):
     cited_clauses: list[str] = Field(default_factory=list)
 
 
+EscalationReason = Literal["non_debatable", "position_mismatch", "low_confidence", "judge_escalated"] | None
+
+
 class Verdict(BaseModel):
     category: Category
     decision: str
@@ -26,6 +29,7 @@ class Verdict(BaseModel):
     rationale: str
     cited_clauses: list[str] = Field(default_factory=list)
     escalated: bool = False
+    escalation_reason: EscalationReason = None
 
 
 class DebateTranscript(BaseModel):

@@ -80,6 +80,7 @@ def hard_route_verdict_node(state: dict) -> dict:
         rationale=f"{bundle.category.value} is hard-routed; no debate performed.",
         cited_clauses=[bundle.policy.rubric],
         escalated=True,
+        escalation_reason="non_debatable",
     )
     return {"verdicts": [verdict]}
 

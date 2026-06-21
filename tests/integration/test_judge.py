@@ -52,6 +52,7 @@ def test_non_debatable_category_always_escalates_without_calling_llm(policy_tabl
     assert verdict.decision == "escalate"
     assert verdict.escalated is True
     assert client.called is False
+    assert verdict.escalation_reason == "non_debatable"
 
 
 def test_unresolved_disagreement_with_escalate_on_tie_escalates_without_calling_llm(policy_table):
@@ -66,6 +67,7 @@ def test_unresolved_disagreement_with_escalate_on_tie_escalates_without_calling_
     assert verdict.escalated is True
     assert client.called is False
     assert verdict.confidence == 0.9
+    assert verdict.escalation_reason == "position_mismatch"
 
 
 def test_disagreement_below_confidence_threshold_is_treated_as_unresolved(policy_table):
@@ -78,6 +80,7 @@ def test_disagreement_below_confidence_threshold_is_treated_as_unresolved(policy
 
     assert verdict.decision == "escalate"
     assert client.called is False
+    assert verdict.escalation_reason == "low_confidence"
 
 
 def test_agreement_calls_llm_and_returns_its_verdict(policy_table):
@@ -118,6 +121,25 @@ def test_disagreement_without_escalate_on_tie_falls_through_to_llm(policy_table)
 
     assert client.called is True
     assert verdict == expected_verdict
+
+
+def test_llm_escalate_decision_gets_judge_escalated_reason(policy_table):
+    bundle = make_bundle(policy_table, Category.SPAM_SCAM)  # escalate_on_tie=False
+    expected_verdict = Verdict(
+        category=Category.SPAM_SCAM,
+        decision="escalate",
+        confidence=0.7,
+        rationale="judge decided to escalate",
+        cited_clauses=[],
+        escalated=True,
+    )
+    client = StubInstructorClient(response=expected_verdict)
+    advocate = make_turn("advocate", "allow", 0.9)
+    enforcer = make_turn("enforcer", "restrict", 0.9)
+
+    verdict = reach_verdict(client, "content", bundle, advocate, enforcer)
+
+    assert verdict.escalation_reason == "judge_escalated"
 
 
 def test_hard_routed_verdict_cites_the_policy_rubric(policy_table):

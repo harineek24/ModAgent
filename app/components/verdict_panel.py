@@ -10,6 +10,12 @@ GROUP_TITLE = {
     "restrict": "⛔ Restricted",
     "allow": "✅ Allowed",
 }
+ESCALATION_REASON_LABEL = {
+    "non_debatable": "Non-debatable category — always routed to a human, no debate held.",
+    "position_mismatch": "Advocate and Enforcer reached different conclusions and could not converge.",
+    "low_confidence": "Advocate and Enforcer agreed, but neither was confident enough to resolve automatically.",
+    "judge_escalated": "The Judge reviewed both arguments and decided the case needs human review.",
+}
 
 
 def _overall_banner(result) -> None:
@@ -53,6 +59,8 @@ def render_verdicts(result: ModerationResult) -> None:
         for verdict in group:
             icon = DECISION_ICON.get(verdict.decision, "•")
             with st.expander(f"{icon} {verdict.category.value} (conf. {verdict.confidence:.2f})"):
+                if verdict.escalation_reason:
+                    st.caption(f"Why: {ESCALATION_REASON_LABEL.get(verdict.escalation_reason, verdict.escalation_reason)}")
                 st.write(verdict.rationale)
 
                 unique_clauses = list(dict.fromkeys(verdict.cited_clauses))
@@ -65,5 +73,5 @@ def render_verdicts(result: ModerationResult) -> None:
                 if transcript and (transcript.advocate_turns or transcript.enforcer_turns):
                     st.markdown("**Debate transcript**")
                     render_debate_turns(transcript.advocate_turns, transcript.enforcer_turns)
-                elif verdict.escalated and "disagreed" in verdict.rationale.lower():
-                    st.info("Debate transcript unavailable for this verdict.")
+                elif verdict.escalation_reason == "non_debatable":
+                    st.info("No debate was held — this category is always escalated by policy.")
