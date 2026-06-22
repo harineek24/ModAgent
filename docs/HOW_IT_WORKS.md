@@ -315,22 +315,26 @@ node) fails loudly in CI before it ever reaches a real model call.
 
 ## Slide 10 — What's still worth improving
 
-- The agreement-score threshold that decides "aligned enough to resolve
-  automatically" was chosen as a reasonable starting point. It has not yet
-  been tuned against real recorded debates, because we don't yet have a
-  collected set of real debates to learn from.
-- The dataset currently used to test the sorting step (Slide 3) only
-  checks that categories get sorted correctly — it does not contain any
-  example debates, so it cannot currently be used to judge whether the
-  debate step itself is working well. Building a second dataset that
-  includes example debates and their expected outcomes would close that
-  gap.
-- Right now, every flagged category's debate starts at the same time as
-  every other one, which means a piece of content with many flagged
-  categories sends a burst of AI calls all at once. Adding a cap on how
-  many categories debate simultaneously (with the rest queued briefly)
-  would smooth that out without changing the debate logic itself.
-- The Streamlit app already shows one overall verdict for the whole piece
-  of content (allowed or restricted) above the per-category breakdown, so
-  a reviewer doesn't have to scan the full list just to tell whether
-  anything was restricted.
+ModAgent today is a decision *layer*, not a full product: `run()` in
+`backend/graph_runner.py` takes content and returns a verdict, with no UI
+coupling -- but nothing currently calls out to act on that verdict, or to
+keep the policy itself current. Closing the loop on both ends is the
+highest-value next step:
+
+- **A moderation-action API on the output side.** A verdict is only ever
+  displayed right now -- nothing actually restricts the content once a
+  human confirms it. Plugging into a real platform means calling that
+  platform's own moderation/takedown API once a verdict is acted on (or,
+  for very high-confidence cases, automatically).
+- **A real policy source of truth on the input side.** `policy_table.yaml`
+  is hand-maintained. In an actual Trust & Safety org, pulling the rubric
+  from their policy CMS/API instead of a static file would keep every
+  debate grounded in the *current* policy, not a snapshot someone forgot
+  to update.
+- **Enrichment APIs for evidence-light categories.** Categories like
+  `pii_doxxing` or `spam_scam` are judged on text alone right now. A
+  lookup against a known-spam list or a phone/address reverse-lookup API
+  could give the Advocate and Enforcer real evidence to argue from,
+  instead of judging plausibility from wording alone -- worth adding if a
+  concrete failure case shows text-only judgment falling short, not
+  preemptively.
