@@ -1,10 +1,7 @@
 """Agreement Check node: scores how much the Advocate and Enforcer
 substantively agree (0-100), independent of exact wording, and -- when they
 do agree -- proposes the resolved position directly, with no separate Judge
-call needed. Replaces the old brittle approach of string-matching `position`
-fields, which broke down because the Advocate's mandate caps out at
-"restrict" while the Enforcer's reaches for "escalate" on severe content,
-making genuine agreement look like an unresolved tie.
+call needed.
 """
 
 import instructor

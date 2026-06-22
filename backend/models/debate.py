@@ -7,8 +7,11 @@ from backend.models.category import Category
 # Constrained to a fixed vocabulary so the Advocate's and Enforcer's
 # positions are directly comparable -- free text ("Harmful But Contextual"
 # vs. "hate speech and harassment") never matches and made every debate
-# look unresolved.
-Position = Literal["allow", "restrict", "escalate"]
+# look unresolved. There is no "escalate" position: every verdict is a
+# moderation decision the system stands behind, and all verdicts are shown
+# to a human reviewer regardless of decision -- there's no separate
+# AI-triggered escalation path to model.
+Position = Literal["allow", "restrict"]
 
 
 class DebateTurn(BaseModel):
@@ -19,26 +22,18 @@ class DebateTurn(BaseModel):
     cited_clauses: list[str] = Field(default_factory=list)
 
 
-EscalationReason = Literal["non_debatable", "low_agreement", "judge_escalated", "agreement_escalated"] | None
-
-
 class Verdict(BaseModel):
     category: Category
-    decision: str
+    decision: Position
     confidence: float
     rationale: str
     cited_clauses: list[str] = Field(default_factory=list)
-    escalated: bool = False
-    escalation_reason: EscalationReason = None
     agreement_score: int | None = None
 
 
 class AgreementCheck(BaseModel):
     """Output of the Agreement Check node: a substantive (not literal-wording)
-    measure of how much the Advocate and Enforcer agree, since the Advocate's
-    mandate caps out at "restrict" while the Enforcer's reaches for "escalate"
-    on severe content -- meaning exact position-string matching made genuine
-    agreement look like a tie.
+    measure of how much the Advocate and Enforcer agree.
     """
 
     agreement_score: int = Field(ge=0, le=100)

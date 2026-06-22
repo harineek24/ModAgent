@@ -1,10 +1,8 @@
 """Judge node: invoked only when the Agreement Check finds the Advocate and
 Enforcer in genuine, unresolved disagreement (agreement score below
-AGREEMENT_THRESHOLD, or the category fails closed on ties without even
-reaching this node -- see graph.py). Reads the full debate and reaches a
-final decision: allow, restrict, or escalate. May call policy_lookup/
-clause_lookup (backend/debate/tools.py) to verify cited wording before
-trusting it.
+AGREEMENT_THRESHOLD -- see graph.py). Reads the full debate and reaches a
+final decision: allow or restrict. May call policy_lookup/clause_lookup
+(backend/debate/tools.py) to verify cited wording before trusting it.
 """
 
 import instructor
@@ -41,7 +39,7 @@ def reach_verdict(
     if tool_context:
         user_message += f"\n\nTool lookups you made:\n{tool_context}"
 
-    verdict = client.chat.completions.create(
+    return client.chat.completions.create(
         model=model,
         response_model=Verdict,
         max_retries=MAX_RETRIES,
@@ -50,6 +48,3 @@ def reach_verdict(
             {"role": "user", "content": user_message},
         ],
     )
-    if verdict.decision == "escalate" and verdict.escalation_reason is None:
-        verdict = verdict.model_copy(update={"escalation_reason": "judge_escalated"})
-    return verdict

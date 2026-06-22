@@ -1,18 +1,24 @@
 """LangGraph wiring: intake -> classify -> route -> fan-out (Send) per
 destination -> per-category debate -> agreement check -> (resolve directly,
-fail-closed escalate, or judge) -> fan-in -> output.
+or judge) -> fan-in -> output.
 
 This module wires nodes together; the actual decision logic lives in
 classification/, routing/, and debate/superagents.py|agreement.py|judge.py
 so each piece stays independently testable.
 
-Each category's debate is now a single shot: Advocate speaks once, Enforcer
+Each category's debate is a single shot: Advocate speaks once, Enforcer
 speaks once, then an Agreement Check scores how much they substantively
 agree (0-100), independent of exact wording. The expensive Judge call is
-only made when that score is below threshold *and* the category doesn't
-fail closed on ties by policy -- most categories resolve in 3 calls total
-instead of repeatedly round-tripping Advocate/Enforcer and always calling a
-Judge.
+only made when that score is below threshold -- most categories resolve in
+3 calls total instead of repeatedly round-tripping Advocate/Enforcer and
+always calling a Judge.
+
+There is no AI-triggered escalation path: every verdict is a final allow/
+restrict decision the system stands behind, and every verdict (whatever the
+decision) is surfaced to a human reviewer afterward regardless. Categories
+that are too sensitive to leave to a debate at all (non-debatable, e.g.
+CSAE) are still hard-routed straight to a "restrict" verdict with no debate
+performed, since that's a pre-debate routing decision, not an AI escalation.
 """
 
 from typing import Annotated, TypedDict
@@ -23,7 +29,7 @@ from langgraph.types import Send
 
 from backend.classification.classifier import classify
 from backend.clients.groq_client import get_instructor_client, get_raw_client
-from backend.debate.agreement import AGREEMENT_THRESHOLD, check_agreement, is_resolved
+from backend.debate.agreement import check_agreement, is_resolved
 from backend.debate.judge import reach_verdict
 from backend.debate.superagents import run_stance_turn
 from backend.models.debate import AgreementCheck, DebateTranscript, DebateTurn, Verdict
@@ -84,12 +90,10 @@ def hard_route_verdict_node(state: dict) -> dict:
     bundle: ContextBundle = state["bundle"]
     verdict = Verdict(
         category=bundle.category,
-        decision="escalate",
+        decision="restrict",
         confidence=1.0,
-        rationale=f"{bundle.category.value} is hard-routed; no debate performed.",
+        rationale=f"{bundle.category.value} is too sensitive to debate; restricted by policy with no debate performed.",
         cited_clauses=[bundle.policy.rubric],
-        escalated=True,
-        escalation_reason="non_debatable",
     )
     return {"verdicts": [verdict]}
 
@@ -116,8 +120,6 @@ def agreement_check_node(state: DebateState) -> dict:
 def agreement_routing_edge(state: DebateState) -> str:
     if is_resolved(state["agreement"]):
         return "resolve"
-    if state["bundle"].policy.escalate_on_tie:
-        return "fail_closed_escalate"
     return "judge"
 
 
@@ -126,42 +128,13 @@ def resolve_node(state: DebateState) -> dict:
     advocate_turn = state["advocate_turn"]
     enforcer_turn = state["enforcer_turn"]
     agreement = state["agreement"]
-    position = agreement.resolved_position
 
     verdict = Verdict(
         category=bundle.category,
-        decision=position,
+        decision=agreement.resolved_position,
         confidence=min(advocate_turn.confidence, enforcer_turn.confidence) * (agreement.agreement_score / 100),
         rationale=agreement.rationale,
         cited_clauses=advocate_turn.cited_clauses + enforcer_turn.cited_clauses,
-        escalated=position == "escalate",
-        escalation_reason="agreement_escalated" if position == "escalate" else None,
-        agreement_score=agreement.agreement_score,
-    )
-    transcript = DebateTranscript(
-        category=bundle.category, advocate_turns=[advocate_turn], enforcer_turns=[enforcer_turn]
-    )
-    return {"verdicts": [verdict], "transcripts": [transcript]}
-
-
-def fail_closed_escalate_node(state: DebateState) -> dict:
-    bundle = state["bundle"]
-    advocate_turn = state["advocate_turn"]
-    enforcer_turn = state["enforcer_turn"]
-    agreement = state["agreement"]
-
-    verdict = Verdict(
-        category=bundle.category,
-        decision="escalate",
-        confidence=min(advocate_turn.confidence, enforcer_turn.confidence),
-        rationale=(
-            f"Advocate and Enforcer only scored {agreement.agreement_score}/100 on agreement "
-            f"(below the {AGREEMENT_THRESHOLD} threshold); this category fails closed on "
-            "unresolved disagreement rather than risking an automatic allow."
-        ),
-        cited_clauses=advocate_turn.cited_clauses + enforcer_turn.cited_clauses,
-        escalated=True,
-        escalation_reason="low_agreement",
         agreement_score=agreement.agreement_score,
     )
     transcript = DebateTranscript(
@@ -188,18 +161,15 @@ def build_debate_subgraph() -> StateGraph:
     subgraph.add_node("debate_turn", debate_turn_node)
     subgraph.add_node("agreement_check", agreement_check_node)
     subgraph.add_node("resolve", resolve_node)
-    subgraph.add_node("fail_closed_escalate", fail_closed_escalate_node)
     subgraph.add_node("judge", judge_node)
 
     subgraph.set_entry_point("debate_turn")
     subgraph.add_edge("debate_turn", "agreement_check")
     subgraph.add_conditional_edges("agreement_check", agreement_routing_edge, {
         "resolve": "resolve",
-        "fail_closed_escalate": "fail_closed_escalate",
         "judge": "judge",
     })
     subgraph.add_edge("resolve", END)
-    subgraph.add_edge("fail_closed_escalate", END)
     subgraph.add_edge("judge", END)
     return subgraph
 

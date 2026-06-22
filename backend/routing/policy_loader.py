@@ -19,7 +19,6 @@ def load_policy_table(path: Path = DEFAULT_POLICY_PATH) -> dict[Category, Catego
             category=category,
             severity=SeverityTier(row["severity"]),
             debatable=row["debatable"],
-            escalate_on_tie=row.get("escalate_on_tie", True),
             rubric=row["rubric"].strip(),
             examples=row.get("examples", []),
         )

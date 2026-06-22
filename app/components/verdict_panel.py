@@ -3,28 +3,17 @@ import streamlit as st
 from app.components.debate_view import render_debate_turns
 from backend.models.debate import ModerationResult
 
-DECISION_ICON = {"allow": "✅", "restrict": "⛔", "escalate": "🟠"}
-DECISION_RANK = {"escalate": 0, "restrict": 1, "allow": 2}
+DECISION_ICON = {"allow": "✅", "restrict": "⛔"}
+DECISION_RANK = {"restrict": 0, "allow": 1}
 GROUP_TITLE = {
-    "escalate": "🟠 Needs human review",
     "restrict": "⛔ Restricted",
     "allow": "✅ Allowed",
-}
-ESCALATION_REASON_LABEL = {
-    "non_debatable": "Non-debatable category — always routed to a human, no debate held.",
-    "low_agreement": "Advocate and Enforcer did not substantively agree, and this category fails closed on ties.",
-    "judge_escalated": "The Judge reviewed both arguments and decided the case needs human review.",
-    "agreement_escalated": "Advocate and Enforcer substantively agreed a violation occurred and escalation "
-    "was the right call (see below for whether their exact recommendations matched).",
 }
 
 
 def _overall_banner(result) -> None:
     decisions = {v.decision for v in result.verdicts}
-    if "escalate" in decisions:
-        st.warning(f"**Overall: NEEDS HUMAN REVIEW** — {sum(v.decision == 'escalate' for v in result.verdicts)} "
-                    f"of {len(result.verdicts)} flagged categories require escalation.")
-    elif "restrict" in decisions:
+    if "restrict" in decisions:
         st.error(f"**Overall: RESTRICTED** — {sum(v.decision == 'restrict' for v in result.verdicts)} "
                   f"of {len(result.verdicts)} flagged categories violate policy.")
     else:
@@ -37,6 +26,7 @@ def render_verdicts(result: ModerationResult) -> None:
         return
 
     _overall_banner(result)
+    st.caption("Every result below — whatever the decision — is provided for human review.")
 
     st.subheader("Summary")
     ordered = sorted(result.verdicts, key=lambda v: DECISION_RANK.get(v.decision, 99))
@@ -52,7 +42,7 @@ def render_verdicts(result: ModerationResult) -> None:
     )
 
     st.subheader("Details")
-    for decision in ("escalate", "restrict", "allow"):
+    for decision in ("restrict", "allow"):
         group = [v for v in ordered if v.decision == decision]
         if not group:
             continue
@@ -62,19 +52,8 @@ def render_verdicts(result: ModerationResult) -> None:
             with st.expander(f"{icon} {verdict.category.value} (conf. {verdict.confidence:.2f})"):
                 transcript = result.transcript_for(verdict.category)
 
-                if verdict.escalation_reason:
-                    st.caption(f"Why: {ESCALATION_REASON_LABEL.get(verdict.escalation_reason, verdict.escalation_reason)}")
                 if verdict.agreement_score is not None:
                     st.caption(f"Advocate/Enforcer agreement: {verdict.agreement_score}/100")
-                if verdict.escalation_reason == "agreement_escalated" and transcript:
-                    advocate_position = transcript.advocate_turns[-1].position if transcript.advocate_turns else None
-                    enforcer_position = transcript.enforcer_turns[-1].position if transcript.enforcer_turns else None
-                    if advocate_position and enforcer_position and advocate_position != enforcer_position:
-                        st.caption(
-                            f"They agreed a violation occurred but differed on remedy severity "
-                            f"(Advocate: {advocate_position}, Enforcer: {enforcer_position}) — "
-                            "the more cautious position was used."
-                        )
                 st.write(verdict.rationale)
 
                 unique_clauses = list(dict.fromkeys(verdict.cited_clauses))
@@ -86,5 +65,5 @@ def render_verdicts(result: ModerationResult) -> None:
                 if transcript and (transcript.advocate_turns or transcript.enforcer_turns):
                     st.markdown("**Debate transcript**")
                     render_debate_turns(transcript.advocate_turns, transcript.enforcer_turns)
-                elif verdict.escalation_reason == "non_debatable":
-                    st.info("No debate was held — this category is always escalated by policy.")
+                else:
+                    st.info("No debate was held — this category is too sensitive to debate by policy.")

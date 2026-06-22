@@ -39,7 +39,7 @@ def test_check_agreement_calls_llm_and_returns_its_result(policy_table):
     expected = AgreementCheck(agreement_score=92, resolved_position="restrict", rationale="both agree")
     client = StubInstructorClient(response=expected)
     advocate = make_turn("advocate", "restrict", 0.95)
-    enforcer = make_turn("enforcer", "escalate", 0.98)
+    enforcer = make_turn("enforcer", "restrict", 0.98)
 
     result = check_agreement(client, "content", bundle, advocate, enforcer)
 

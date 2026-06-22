@@ -4,7 +4,6 @@
 hate_speech:
   severity: high
   debatable: true
-  escalate_on_tie: true
   rubric: >
     Content that attacks, demeans, or dehumanizes individuals or groups based on
     protected attributes (race, religion, ethnicity, gender, sexual orientation,
@@ -14,7 +13,6 @@ hate_speech:
 harassment_bullying:
   severity: medium_high
   debatable: true
-  escalate_on_tie: true
   rubric: >
     Targeted, repeated, or severe negative content aimed at a specific individual,
     distinct from general incivility or disagreement.
@@ -23,7 +21,6 @@ harassment_bullying:
 violence_incitement:
   severity: high
   debatable: true
-  escalate_on_tie: true
   rubric: >
     Calls to action encouraging violence against a person, group, or property,
     as distinct from depiction or discussion of violence.
@@ -32,7 +29,6 @@ violence_incitement:
 graphic_violence:
   severity: medium
   debatable: true
-  escalate_on_tie: false
   rubric: >
     Depiction or detailed description of real-world violence or gore, without
     an explicit call to action.
@@ -41,16 +37,14 @@ graphic_violence:
 self_harm_suicide:
   severity: critical
   debatable: false
-  escalate_on_tie: true
   rubric: >
     Content depicting, encouraging, or providing instructions for self-harm or
-    suicide. Always escalated to human review; never auto-allowed.
+    suicide. Always restricted by policy; never auto-allowed or debated.
   examples: []
 
 csae:
   severity: critical
   debatable: false
-  escalate_on_tie: true
   rubric: >
     Any content sexualizing or endangering minors. Zero-tolerance hard block;
     mandatory reporting path, never debated.
@@ -59,7 +53,6 @@ csae:
 sexual_content_adult:
   severity: medium
   debatable: true
-  escalate_on_tie: false
   rubric: >
     Sexually explicit content involving adults. Context-dependent (artistic,
     medical, educational contexts may shift severity).
@@ -68,16 +61,14 @@ sexual_content_adult:
 terrorism_extremism:
   severity: critical
   debatable: false
-  escalate_on_tie: true
   rubric: >
     Content promoting, glorifying, or organizing terrorist or violent extremist
-    activity. Hard block, mandatory escalation.
+    activity. Hard block, never debated.
   examples: []
 
 misinformation:
   severity: medium
   debatable: true
-  escalate_on_tie: true
   rubric: >
     False or misleading claims, with elevated scrutiny for health, election, and
     public-safety topics.
@@ -86,7 +77,6 @@ misinformation:
 spam_scam:
   severity: low
   debatable: true
-  escalate_on_tie: false
   rubric: >
     Unsolicited commercial content, or content intended to defraud/phish users.
   examples: []
@@ -94,7 +84,6 @@ spam_scam:
 pii_doxxing:
   severity: medium_high
   debatable: true
-  escalate_on_tie: true
   rubric: >
     Exposure of private identifying information (address, contact info, location)
     without consent.
@@ -103,7 +92,6 @@ pii_doxxing:
 ip_copyright:
   severity: low
   debatable: true
-  escalate_on_tie: false
   rubric: >
     Content infringing on intellectual property or copyright; typically governed
     by rules-based takedown processes rather than open debate.
@@ -112,7 +100,6 @@ ip_copyright:
 illegal_goods_services:
   severity: high
   debatable: true
-  escalate_on_tie: true
   rubric: >
     Facilitation of sale or trade of illegal goods or services (drugs, weapons,
     counterfeit goods).
@@ -121,7 +108,6 @@ illegal_goods_services:
 regulated_content:
   severity: medium
   debatable: true
-  escalate_on_tie: false
   rubric: >
     Content involving regulated goods/activities (gambling, alcohol, tobacco)
     subject to platform/locale-specific rules.
@@ -130,7 +116,6 @@ regulated_content:
 benign:
   severity: none
   debatable: false
-  escalate_on_tie: false
   rubric: >
     Default category emitted when no other category's score exceeds threshold.
   examples: []

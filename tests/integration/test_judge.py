@@ -1,9 +1,9 @@
-"""Tests for the Judge node. The Judge is now only invoked by the graph when
-the Agreement Check has already determined the Advocate and Enforcer are in
-genuine, unresolved disagreement -- so reach_verdict() itself just makes the
-LLM call and tags judge-initiated escalations. The Instructor client is
-stubbed since these tests target that wiring, not actual LLM reasoning
-quality.
+"""Tests for the Judge node. The Judge is only invoked by the graph when the
+Agreement Check has already determined the Advocate and Enforcer are in
+genuine, unresolved disagreement -- so reach_verdict() just makes the LLM
+call and returns its verdict (allow or restrict; there's no escalate
+position). The Instructor client is stubbed since these tests target that
+wiring, not actual LLM reasoning quality.
 """
 
 from backend.debate.judge import reach_verdict
@@ -76,7 +76,6 @@ def test_reach_verdict_calls_llm_and_returns_its_verdict(policy_table):
         confidence=0.95,
         rationale="judge weighed both arguments",
         cited_clauses=["clause-1"],
-        escalated=False,
     )
     client = StubInstructorClient(response=expected_verdict)
     advocate = make_turn("advocate", "allow", 0.6)
@@ -88,26 +87,7 @@ def test_reach_verdict_calls_llm_and_returns_its_verdict(policy_table):
     assert verdict == expected_verdict
 
 
-def test_llm_escalate_decision_gets_judge_escalated_reason(policy_table):
-    bundle = make_bundle(policy_table, Category.SPAM_SCAM)
-    expected_verdict = Verdict(
-        category=Category.SPAM_SCAM,
-        decision="escalate",
-        confidence=0.7,
-        rationale="judge decided to escalate",
-        cited_clauses=[],
-        escalated=True,
-    )
-    client = StubInstructorClient(response=expected_verdict)
-    advocate = make_turn("advocate", "allow", 0.5)
-    enforcer = make_turn("enforcer", "restrict", 0.5)
-
-    verdict = reach_verdict(client, StubRawClient(), "content", bundle, advocate, enforcer)
-
-    assert verdict.escalation_reason == "judge_escalated"
-
-
-def test_llm_verdict_with_explicit_reason_is_not_overwritten(policy_table):
+def test_reach_verdict_can_side_with_the_advocate(policy_table):
     bundle = make_bundle(policy_table, Category.SPAM_SCAM)
     expected_verdict = Verdict(
         category=Category.SPAM_SCAM,
@@ -115,7 +95,6 @@ def test_llm_verdict_with_explicit_reason_is_not_overwritten(policy_table):
         confidence=0.9,
         rationale="judge sided with the advocate",
         cited_clauses=[],
-        escalated=False,
     )
     client = StubInstructorClient(response=expected_verdict)
     advocate = make_turn("advocate", "allow", 0.5)
@@ -124,4 +103,3 @@ def test_llm_verdict_with_explicit_reason_is_not_overwritten(policy_table):
     verdict = reach_verdict(client, StubRawClient(), "content", bundle, advocate, enforcer)
 
     assert verdict.decision == "allow"
-    assert verdict.escalation_reason is None

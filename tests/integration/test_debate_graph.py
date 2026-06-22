@@ -23,7 +23,6 @@ def debatable_bundle(policy_table):
 
 @pytest.fixture
 def tie_safe_bundle(policy_table):
-    # SPAM_SCAM has escalate_on_tie=False, so low agreement falls through to the Judge.
     return ContextBundle(category=Category.SPAM_SCAM, policy=policy_table[Category.SPAM_SCAM], score=0.6)
 
 
@@ -68,13 +67,11 @@ def test_dispatch_to_debates_count_scales_with_multiple_destinations(policy_tabl
 
 # --- hard_route_verdict_node -------------------------------------------------
 
-def test_hard_route_verdict_node_produces_escalated_verdict(hard_routed_bundle):
+def test_hard_route_verdict_node_produces_restricted_verdict_with_no_debate(hard_routed_bundle):
     result = graph_module.hard_route_verdict_node({"bundle": hard_routed_bundle})
     verdict = result["verdicts"][0]
     assert verdict.category == Category.CSAE
-    assert verdict.decision == "escalate"
-    assert verdict.escalated is True
-    assert verdict.escalation_reason == "non_debatable"
+    assert verdict.decision == "restrict"
 
 
 # --- agreement_routing_edge ---------------------------------------------------
@@ -87,64 +84,47 @@ def test_agreement_routing_edge_resolves_when_agreement_is_high(debatable_bundle
     assert graph_module.agreement_routing_edge(state) == "resolve"
 
 
-def test_agreement_routing_edge_fails_closed_when_escalate_on_tie(debatable_bundle):
-    # HATE_SPEECH has escalate_on_tie=True
+def test_agreement_routing_edge_goes_to_judge_when_agreement_is_low(debatable_bundle):
     state = {
         "bundle": debatable_bundle,
-        "agreement": AgreementCheck(agreement_score=20, resolved_position=None, rationale="r"),
-    }
-    assert graph_module.agreement_routing_edge(state) == "fail_closed_escalate"
-
-
-def test_agreement_routing_edge_goes_to_judge_when_not_escalate_on_tie(tie_safe_bundle):
-    state = {
-        "bundle": tie_safe_bundle,
         "agreement": AgreementCheck(agreement_score=20, resolved_position=None, rationale="r"),
     }
     assert graph_module.agreement_routing_edge(state) == "judge"
 
 
-# --- resolve_node / fail_closed_escalate_node --------------------------------
+def test_agreement_routing_edge_goes_to_judge_when_no_resolved_position_even_if_score_high(tie_safe_bundle):
+    state = {
+        "bundle": tie_safe_bundle,
+        "agreement": AgreementCheck(agreement_score=90, resolved_position=None, rationale="r"),
+    }
+    assert graph_module.agreement_routing_edge(state) == "judge"
+
+
+# --- resolve_node -------------------------------------------------------------
 
 def test_resolve_node_uses_agreement_check_resolved_position(debatable_bundle):
     state = {
         "bundle": debatable_bundle,
         "advocate_turn": DebateTurn(stance="advocate", position="restrict", confidence=0.9, rationale="r"),
-        "enforcer_turn": DebateTurn(stance="enforcer", position="escalate", confidence=0.95, rationale="r"),
+        "enforcer_turn": DebateTurn(stance="enforcer", position="restrict", confidence=0.95, rationale="r"),
         "agreement": AgreementCheck(agreement_score=90, resolved_position="restrict", rationale="aligned"),
     }
     result = graph_module.resolve_node(state)
     verdict = result["verdicts"][0]
     assert verdict.decision == "restrict"
-    assert verdict.escalated is False
     assert verdict.agreement_score == 90
 
 
-def test_resolve_node_marks_escalated_when_resolved_position_is_escalate(debatable_bundle):
-    state = {
-        "bundle": debatable_bundle,
-        "advocate_turn": DebateTurn(stance="advocate", position="escalate", confidence=0.9, rationale="r"),
-        "enforcer_turn": DebateTurn(stance="enforcer", position="escalate", confidence=0.95, rationale="r"),
-        "agreement": AgreementCheck(agreement_score=95, resolved_position="escalate", rationale="aligned"),
-    }
-    result = graph_module.resolve_node(state)
-    verdict = result["verdicts"][0]
-    assert verdict.escalated is True
-    assert verdict.escalation_reason == "agreement_escalated"
-
-
-def test_fail_closed_escalate_node_produces_low_agreement_verdict(debatable_bundle):
+def test_resolve_node_can_resolve_to_allow(debatable_bundle):
     state = {
         "bundle": debatable_bundle,
         "advocate_turn": DebateTurn(stance="advocate", position="allow", confidence=0.9, rationale="r"),
-        "enforcer_turn": DebateTurn(stance="enforcer", position="escalate", confidence=0.95, rationale="r"),
-        "agreement": AgreementCheck(agreement_score=10, resolved_position=None, rationale="opposed"),
+        "enforcer_turn": DebateTurn(stance="enforcer", position="allow", confidence=0.95, rationale="r"),
+        "agreement": AgreementCheck(agreement_score=95, resolved_position="allow", rationale="aligned"),
     }
-    result = graph_module.fail_closed_escalate_node(state)
+    result = graph_module.resolve_node(state)
     verdict = result["verdicts"][0]
-    assert verdict.decision == "escalate"
-    assert verdict.escalation_reason == "low_agreement"
-    assert verdict.agreement_score == 10
+    assert verdict.decision == "allow"
 
 
 # --- full mocked graph traversal --------------------------------------------
@@ -178,18 +158,16 @@ def test_full_graph_produces_one_verdict_per_routed_category(mocked_graph):
     assert verdict_categories == {Category.HATE_SPEECH, Category.CSAE}
 
 
-def test_full_graph_hard_routed_category_is_always_escalated(mocked_graph):
+def test_full_graph_hard_routed_category_is_restricted_with_no_debate(mocked_graph):
     final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
     csae_verdict = next(v for v in final_state["verdicts"] if v.category == Category.CSAE)
-    assert csae_verdict.escalated is True
-    assert csae_verdict.decision == "escalate"
+    assert csae_verdict.decision == "restrict"
 
 
 def test_full_graph_debatable_category_resolves_via_agreement_check(mocked_graph):
     final_state = mocked_graph.invoke({"content": "some flagged content", "verdicts": [], "transcripts": []})
     hate_verdict = next(v for v in final_state["verdicts"] if v.category == Category.HATE_SPEECH)
     assert hate_verdict.decision == "restrict"
-    assert hate_verdict.escalated is False
 
 
 def test_full_graph_debatable_category_produces_transcript_with_turns(mocked_graph):
@@ -234,7 +212,7 @@ def test_full_graph_low_agreement_falls_through_to_judge(monkeypatch, tie_safe_b
     def fake_reach_verdict(client, raw_client, content, bundle, advocate_turn, enforcer_turn, model=None):
         return Verdict(
             category=bundle.category, decision="restrict", confidence=0.8, rationale="judge weighed it",
-            cited_clauses=[], escalated=False,
+            cited_clauses=[],
         )
 
     monkeypatch.setattr(graph_module, "run_stance_turn", fake_run_stance_turn)
