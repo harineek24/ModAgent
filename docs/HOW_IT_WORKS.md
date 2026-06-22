@@ -163,7 +163,54 @@ a back-and-forth to show — that is expected, not a missing piece of data.
 
 ---
 
-## Slide 7 — What's still worth improving
+## Slide 7 — Why this is different from a typical moderation pipeline
+
+Most moderation tooling in production today is a single classifier (or a
+single LLM call) that outputs one label per piece of content. That design
+has a structural weakness: the model's confidence and its correctness are
+two different things, and a single pass gives you no way to tell them
+apart. A 0.91-confidence call that's wrong looks identical, from the
+outside, to a 0.91-confidence call that's right.
+
+ModAgent is built around a different idea: disagreement is itself a
+useful signal, and it's cheap to manufacture on purpose. Concretely:
+
+- **Two opposed personas instead of one judgment.** The Advocate and
+  Enforcer are deliberately biased in opposite directions before they
+  ever see the content. When two systems with opposite incentives still
+  land on the same conclusion, that agreement is much stronger evidence
+  than one model's confidence score. When they don't agree, that
+  disagreement is flagged and routed to a third, independent call (the
+  Judge) instead of being silently averaged away.
+- **The Judge is conditional, not constant.** Most pipelines that try to
+  add a second opinion just run every case through every stage,
+  regardless of whether the first two stages already agreed. ModAgent
+  only spends the extra Judge call on the categories that actually need
+  it -- cases where the Advocate and Enforcer agreed don't pay for a
+  third call at all, which keeps the system cheaper and faster on the
+  (usually large) majority of clear-cut content, without giving up
+  accuracy on the genuinely hard cases.
+- **Grounded lookups instead of paraphrase-and-hope.** A single-call
+  classifier has to have the entire policy baked into its prompt or its
+  training, and it can't check itself. Here, the Advocate, Enforcer, and
+  Judge can each reach for the real policy table at will, mid-argument,
+  instead of relying on whatever got paraphrased into the system prompt --
+  closing off a common source of hallucinated or stale policy citations.
+- **Full transparency instead of a single opaque label.** Every output
+  pairs the decision with the actual Advocate/Enforcer rationales, the
+  agreement score, and the cited clauses -- so a human reviewer is looking
+  at the reasoning, not just trusting a number.
+- **No fake resolution.** As covered in Slide 5, earlier moderation
+  designs (including an earlier version of this one) lean on a
+  third "escalate" outcome to paper over genuinely hard cases. ModAgent
+  forces a real allow/restrict decision out of every case, and treats
+  human review as a constant, blanket safety net rather than something
+  the AI gets to invoke selectively -- so there's no case where the
+  system's own uncertainty is hidden behind a vague "needs review" label.
+
+---
+
+## Slide 8 — What's still worth improving
 
 - The agreement-score threshold that decides "aligned enough to resolve
   automatically" was chosen as a reasonable starting point. It has not yet
