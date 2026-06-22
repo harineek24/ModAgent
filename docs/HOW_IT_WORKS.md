@@ -1,4 +1,4 @@
-# ModAgent — How It Works (7 slides)
+# ModAgent — How It Works (10 slides)
 
 ---
 
@@ -115,33 +115,7 @@ already given, not to re-litigate policy wording.
 
 ---
 
-## Slide 5 — There's no separate "needs human review" outcome
-
-Earlier versions of this system had a third AI decision — "escalate" —
-for cases where the Advocate and Enforcer couldn't agree, or agreed
-something was severe. That turned out to be a confused design: an AI
-escalating to a human is supposed to mean "we're not confident enough to
-decide," but a 100/100 Agreement Check score paired with "escalate" was
-the AI saying the *opposite* — "we're fully confident, and our shared
-conclusion is to punt." Those two meanings don't belong in the same
-field.
-
-ModAgent now keeps the AI's job simple: every verdict is allow or
-restrict, full stop. The Agreement Check resolves the case directly when
-the two sides substantively agree (on either word); the Judge breaks the
-tie with its own allow/restrict call when they don't. Either way, a real
-decision comes out the other end.
-
-Separately, and unconditionally: every decision — for every category, in
-every piece of content — is shown to a human reviewer in the final
-report, along with its confidence, its agreement score, and the full
-debate transcript. Human review isn't something the AI decides to invoke
-on hard cases; it's the standard, blanket practice for all output, so the
-AI never has to carry the weight of deciding when a human is needed.
-
----
-
-## Slide 6 — What a finished result actually contains
+## Slide 5 — What a finished result actually contains
 
 For a single piece of content, the final result lists one outcome per
 category that was flagged (not all fifteen categories, only the ones that
@@ -163,7 +137,7 @@ a back-and-forth to show — that is expected, not a missing piece of data.
 
 ---
 
-## Slide 7 — Why this is different from a typical moderation pipeline
+## Slide 6 — Why this is different from a typical moderation pipeline
 
 Most moderation tooling in production today is a single classifier (or a
 single LLM call) that outputs one label per piece of content. That design
@@ -200,17 +174,17 @@ useful signal, and it's cheap to manufacture on purpose. Concretely:
   pairs the decision with the actual Advocate/Enforcer rationales, the
   agreement score, and the cited clauses -- so a human reviewer is looking
   at the reasoning, not just trusting a number.
-- **No fake resolution.** As covered in Slide 5, earlier moderation
-  designs (including an earlier version of this one) lean on a
-  third "escalate" outcome to paper over genuinely hard cases. ModAgent
-  forces a real allow/restrict decision out of every case, and treats
-  human review as a constant, blanket safety net rather than something
-  the AI gets to invoke selectively -- so there's no case where the
-  system's own uncertainty is hidden behind a vague "needs review" label.
+- **No fake resolution.** Earlier moderation designs (including an
+  earlier version of this one) lean on a third "escalate" outcome to
+  paper over genuinely hard cases. ModAgent forces a real allow/restrict
+  decision out of every case, and treats human review as a constant,
+  blanket safety net rather than something the AI gets to invoke
+  selectively -- so there's no case where the system's own uncertainty is
+  hidden behind a vague "needs review" label.
 
 ---
 
-## Slide 8 — Why each prompt is written the way it is
+## Slide 7 — Why each prompt is written the way it is
 
 The four prompts that drive the debate (Advocate, Enforcer, Judge, Agreement
 Check) are deliberately narrow and specific rather than generic "you are a
@@ -257,7 +231,7 @@ standard in isolation.
 
 ---
 
-## Slide 9 — How the debate is actually wired together (the "agent")
+## Slide 8 — How the debate is actually wired together (the "agent")
 
 There's no single monolithic agent loop here — the whole pipeline is one
 LangGraph state machine, built from small, independently testable nodes:
@@ -296,11 +270,11 @@ A few wiring decisions worth calling out because they're easy to get wrong:
   invoked are `intake_and_classify_node`, `debate_turn_node`,
   `agreement_check_node`, and `judge_node`. Keeping routing logic out of
   the LLM-touching nodes is what makes the graph's control flow testable
-  without mocking a model at all (see Slide 10's wiring tests).
+  without mocking a model at all (see Slide 9's wiring tests).
 
 ---
 
-## Slide 10 — How the test suite is organized
+## Slide 9 — How the test suite is organized
 
 The tests split cleanly along the same boundary the graph itself uses —
 deterministic logic vs. LLM-touching logic — so each layer can be tested
@@ -339,7 +313,7 @@ node) fails loudly in CI before it ever reaches a real model call.
 
 ---
 
-## Slide 11 — What's still worth improving
+## Slide 10 — What's still worth improving
 
 - The agreement-score threshold that decides "aligned enough to resolve
   automatically" was chosen as a reasonable starting point. It has not yet
