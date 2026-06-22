@@ -8,8 +8,9 @@ Most automated content moderation tools force a single AI model to make a
 yes-or-no call on a piece of content, and that single model is either too
 strict (it blocks harmless content and frustrates users) or too lenient (it
 misses real harm). ModAgent takes a different approach: for any borderline
-case, it has two AI personas argue opposite sides of the question, and only
-asks a human to step in when that argument genuinely cannot be settled.
+case, it has two AI personas argue opposite sides of the question, checks
+how much they actually agree, and only asks a human to step in when that
+disagreement is genuine.
 
 The system does four things, in order, for every piece of content:
 
@@ -18,11 +19,14 @@ The system does four things, in order, for every piece of content:
 2. It decides, for each category that scored high enough, whether the
    category is even allowed to be debated, or whether it must go straight
    to a human.
-3. For everything that can be debated, it runs a structured back-and-forth
-   between an Advocate (who leans toward allowing content) and an Enforcer
-   (who leans toward restricting it).
-4. A Judge reads that back-and-forth and reaches a final decision: allow,
-   restrict, or escalate to a human.
+3. For everything that can be debated, an Advocate (who leans toward
+   allowing content) and an Enforcer (who leans toward restricting it)
+   each give one opinion, and an Agreement Check measures how much they
+   actually agree on the substance — not just whether they used the same
+   word.
+4. Only when they genuinely disagree does a Judge step in to read the full
+   argument and reach a final decision: allow, restrict, or escalate to a
+   human.
 
 ---
 
@@ -35,9 +39,9 @@ flowchart LR
     C -->|Score too low| D[Treated as benign\nNo verdict needed]
     C -->|Category is too sensitive to debate\ne.g. child safety, self-harm, terrorism| E[Sent straight to a human]
     C -->|Category is open to debate| F[Sent to the debate step\nrunning once per flagged category]
-    F --> G[Step 4: Judge reads the debate\nand decides]
-    E --> H[Final result for this category]
-    G --> H
+    F --> G[Step 4: Agreement Check\ndecides if a Judge is needed]
+    G --> H[Final result for this category]
+    E --> H
     H --> I[All results are combined\ninto one report for the user]
 ```
 
@@ -76,47 +80,49 @@ they go to a human immediately.
 ```mermaid
 flowchart TD
     R1[The Advocate gives an opinion\nand a confidence level] --> R2[The Enforcer gives an opinion\nand a confidence level]
-    R2 --> Check{"Did they reach the same opinion,\nand are both confident enough?"}
-    Check -->|Yes, they agree| J[Send the transcript to the Judge]
-    Check -->|No, and there is still time for another round| R1
-    Check -->|No, but they have already used all three rounds| J
-    J --> V[The Judge reaches a final decision]
+    R2 --> AC[Agreement Check reads both arguments\nand scores agreement 0-100]
+    AC --> Check{"Did they substantively agree\n(score above threshold)?"}
+    Check -->|Yes| Resolve[Use the agreed-on decision directly\nNo Judge call needed]
+    Check -->|No, and this category fails\nclosed on real disagreement| FC[Escalate to a human directly\nNo Judge call needed]
+    Check -->|No, but this category allows\nthe Judge to weigh in| J[Judge reads the full debate\nand decides]
 ```
 
-The Advocate is instructed to argue for giving the content the benefit of
-the doubt, while still admitting when a violation is obvious. The Enforcer
-is instructed to argue for caution, while still admitting when content is
-clearly harmless. Each side must state its opinion as one of exactly three
-words: "allow," "restrict," or "escalate," so that the two opinions can be
-compared directly. Earlier in development, the two sides were allowed to
-phrase their opinions in their own words, which meant their answers could
-never really be compared to each other, and debates almost always looked
-unresolved even when both sides actually agreed. That has since been
-fixed.
+Each side states its opinion as one of exactly three words — "allow,"
+"restrict," or "escalate" — and gives a confidence level and a rationale.
+Earlier in development, the system tried to detect agreement by checking
+whether the two words matched exactly. That broke down in an important
+way: the Advocate's lenient mandate caps out at "restrict" while the
+Enforcer's cautious mandate reaches for "escalate" on anything severe, so
+the two sides almost never used the literal same word even when they
+clearly agreed something was wrong. The Agreement Check fixes this by
+reading both rationales and scoring how much they actually agree on the
+substance, regardless of which word each side used. Most categories now
+resolve in just two AI calls (Advocate, Enforcer) plus one Agreement
+Check call — the Judge is only brought in for genuine, unresolved
+disagreement, which keeps the system both faster and more accurate.
 
 ---
 
 ## Slide 5 — Why a result sometimes says "needs human review"
 
 A category is sent to a human, instead of being resolved automatically,
-for one of four specific reasons, and the system now records which reason
+for one of four specific reasons, and the system records which reason
 applied so it can be shown to the user instead of one generic message:
 
 1. **The category is never debated.** Some categories are too sensitive to
    leave to an AI argument, by policy, regardless of what either side
    would say.
-2. **The two sides reached different opinions.** The Advocate and the
-   Enforcer disagreed even after using all of their allowed rounds.
-3. **The two sides agreed, but weren't confident enough.** Both said the
-   same thing, but neither was confident enough in that answer for the
-   system to trust it without a human checking.
-4. **The Judge itself decided to escalate.** Even when the two sides agree
-   confidently, the Judge — which separately reviews the full argument —
-   can still decide that a human should make the final call.
-
-Most categories are configured so that any unresolved disagreement
-defaults to "send to a human" rather than "allow it anyway." This is a
-deliberate, cautious default, not a flaw.
+2. **The two sides substantively agreed that escalation was warranted.**
+   The Agreement Check found they were aligned, and what they were
+   aligned on was "this needs a human."
+3. **The two sides did not substantively agree, and this category fails
+   closed on real disagreement.** Most categories are configured this way
+   deliberately: an unresolved disagreement defaults to "send to a human"
+   rather than "allow it anyway."
+4. **The Judge itself decided to escalate.** For categories that allow a
+   real disagreement to be weighed rather than failing closed
+   automatically, the Judge reads both arguments and can still decide a
+   human should make the final call.
 
 ---
 
@@ -129,11 +135,13 @@ includes:
 
 - The final decision: allow, restrict, or escalate.
 - How confident the system was in that decision.
+- The Advocate/Enforcer agreement score (0-100), so a reviewer can see at
+  a glance whether the two sides were closely aligned or far apart.
 - A plain-language explanation of why that decision was reached.
 - The exact policy wording that the decision was based on.
-- If a debate actually happened for that category, the full back-and-forth
-  between the Advocate and the Enforcer, so a human reviewer can see
-  exactly how the disagreement unfolded.
+- If a debate actually happened for that category, the Advocate's and
+  Enforcer's opinions side by side, so a human reviewer can see exactly
+  what each side argued.
 
 Categories that went straight to a human, without a debate, will not have
 a back-and-forth to show — that is expected, not a missing piece of data.
@@ -142,18 +150,21 @@ a back-and-forth to show — that is expected, not a missing piece of data.
 
 ## Slide 7 — What's still worth improving
 
-- The thresholds that decide how confident is "confident enough," and how
-  many rounds of debate are allowed before giving up, were chosen as
-  reasonable starting points. They have not yet been tuned against real
-  recorded debates, because we don't yet have a collected set of real
-  debates to learn from. A tool now exists to do that tuning properly once
-  that data exists, rather than guessing at better numbers.
+- The agreement-score threshold that decides "aligned enough to resolve
+  automatically" was chosen as a reasonable starting point. It has not yet
+  been tuned against real recorded debates, because we don't yet have a
+  collected set of real debates to learn from.
 - The dataset currently used to test the sorting step (Slide 3) only
   checks that categories get sorted correctly — it does not contain any
   example debates, so it cannot currently be used to judge whether the
   debate step itself is working well. Building a second dataset that
   includes example debates and their expected outcomes would close that
   gap.
+- Right now, every flagged category's debate starts at the same time as
+  every other one, which means a piece of content with many flagged
+  categories sends a burst of AI calls all at once. Adding a cap on how
+  many categories debate simultaneously (with the rest queued briefly)
+  would smooth that out without changing the debate logic itself.
 - The Streamlit app already shows one overall verdict for the whole piece
   of content (allowed, restricted, or needs human review) above the
   per-category breakdown, so a reviewer doesn't have to scan the full list

@@ -12,9 +12,9 @@ GROUP_TITLE = {
 }
 ESCALATION_REASON_LABEL = {
     "non_debatable": "Non-debatable category — always routed to a human, no debate held.",
-    "position_mismatch": "Advocate and Enforcer reached different conclusions and could not converge.",
-    "low_confidence": "Advocate and Enforcer agreed, but neither was confident enough to resolve automatically.",
+    "low_agreement": "Advocate and Enforcer did not substantively agree, and this category fails closed on ties.",
     "judge_escalated": "The Judge reviewed both arguments and decided the case needs human review.",
+    "agreement_escalated": "Advocate and Enforcer substantively agreed that escalation was warranted.",
 }
 
 
@@ -61,6 +61,8 @@ def render_verdicts(result: ModerationResult) -> None:
             with st.expander(f"{icon} {verdict.category.value} (conf. {verdict.confidence:.2f})"):
                 if verdict.escalation_reason:
                     st.caption(f"Why: {ESCALATION_REASON_LABEL.get(verdict.escalation_reason, verdict.escalation_reason)}")
+                if verdict.agreement_score is not None:
+                    st.caption(f"Advocate/Enforcer agreement: {verdict.agreement_score}/100")
                 st.write(verdict.rationale)
 
                 unique_clauses = list(dict.fromkeys(verdict.cited_clauses))

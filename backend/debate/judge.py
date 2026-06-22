@@ -1,6 +1,8 @@
-"""Judge node: synthesizes a final Verdict from the full debate transcript for
-one category. Fail-closed: any unresolved disagreement on an escalate_on_tie
-category routes to escalation rather than allow.
+"""Judge node: invoked only when the Agreement Check finds the Advocate and
+Enforcer in genuine, unresolved disagreement (agreement score below
+AGREEMENT_THRESHOLD, or the category fails closed on ties without even
+reaching this node -- see graph.py). Reads the full debate and reaches a
+final decision: allow, restrict, or escalate.
 """
 
 import instructor
@@ -8,7 +10,6 @@ import instructor
 from backend.clients.groq_client import DEFAULT_MODEL
 from backend.clients.retry_policy import MAX_RETRIES
 from backend.debate.prompts import JUDGE_SYSTEM_PROMPT
-from backend.debate.termination import disagreement_reason, turns_agree
 from backend.models.debate import DebateTurn, Verdict
 from backend.models.routing import ContextBundle
 
@@ -21,37 +22,6 @@ def reach_verdict(
     enforcer_turn: DebateTurn,
     model: str = DEFAULT_MODEL,
 ) -> Verdict:
-    if not bundle.policy.debatable:
-        return Verdict(
-            category=bundle.category,
-            decision="escalate",
-            confidence=1.0,
-            rationale=f"{bundle.category.value} is non-debatable and hard-routed.",
-            cited_clauses=[bundle.policy.rubric],
-            escalated=True,
-            escalation_reason="non_debatable",
-        )
-
-    unresolved = not turns_agree(advocate_turn, enforcer_turn)
-    if unresolved and bundle.policy.escalate_on_tie:
-        reason = disagreement_reason(advocate_turn, enforcer_turn)
-        rationale = (
-            "Advocate and Enforcer reached different positions without resolution; "
-            "escalate_on_tie policy applies."
-            if reason == "position_mismatch"
-            else "Advocate and Enforcer agreed on a position but neither reached the "
-            "confidence threshold required to resolve the debate; escalate_on_tie policy applies."
-        )
-        return Verdict(
-            category=bundle.category,
-            decision="escalate",
-            confidence=min(advocate_turn.confidence, enforcer_turn.confidence),
-            rationale=rationale,
-            cited_clauses=advocate_turn.cited_clauses + enforcer_turn.cited_clauses,
-            escalated=True,
-            escalation_reason=reason,
-        )
-
     user_message = (
         f"Content under review:\n{content}\n\n"
         f"Category: {bundle.category.value}\n"

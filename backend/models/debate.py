@@ -19,7 +19,7 @@ class DebateTurn(BaseModel):
     cited_clauses: list[str] = Field(default_factory=list)
 
 
-EscalationReason = Literal["non_debatable", "position_mismatch", "low_confidence", "judge_escalated"] | None
+EscalationReason = Literal["non_debatable", "low_agreement", "judge_escalated", "agreement_escalated"] | None
 
 
 class Verdict(BaseModel):
@@ -30,6 +30,20 @@ class Verdict(BaseModel):
     cited_clauses: list[str] = Field(default_factory=list)
     escalated: bool = False
     escalation_reason: EscalationReason = None
+    agreement_score: int | None = None
+
+
+class AgreementCheck(BaseModel):
+    """Output of the Agreement Check node: a substantive (not literal-wording)
+    measure of how much the Advocate and Enforcer agree, since the Advocate's
+    mandate caps out at "restrict" while the Enforcer's reaches for "escalate"
+    on severe content -- meaning exact position-string matching made genuine
+    agreement look like a tie.
+    """
+
+    agreement_score: int = Field(ge=0, le=100)
+    resolved_position: Position | None = None
+    rationale: str
 
 
 class DebateTranscript(BaseModel):

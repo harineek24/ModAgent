@@ -1,9 +1,18 @@
 """LangGraph wiring: intake -> classify -> route -> fan-out (Send) per
-destination -> per-category debate loop -> judge -> fan-in -> output.
+destination -> per-category debate -> agreement check -> (resolve directly,
+fail-closed escalate, or judge) -> fan-in -> output.
 
 This module wires nodes together; the actual decision logic lives in
-classification/, routing/, and debate/superagents.py|judge.py|termination.py
+classification/, routing/, and debate/superagents.py|agreement.py|judge.py
 so each piece stays independently testable.
+
+Each category's debate is now a single shot: Advocate speaks once, Enforcer
+speaks once, then an Agreement Check scores how much they substantively
+agree (0-100), independent of exact wording. The expensive Judge call is
+only made when that score is below threshold *and* the category doesn't
+fail closed on ties by policy -- most categories resolve in 3 calls total
+instead of repeatedly round-tripping Advocate/Enforcer and always calling a
+Judge.
 """
 
 from typing import Annotated, TypedDict
@@ -14,10 +23,10 @@ from langgraph.types import Send
 
 from backend.classification.classifier import classify
 from backend.clients.groq_client import get_instructor_client
+from backend.debate.agreement import AGREEMENT_THRESHOLD, check_agreement, is_resolved
 from backend.debate.judge import reach_verdict
 from backend.debate.superagents import run_stance_turn
-from backend.debate.termination import should_continue_debate
-from backend.models.debate import DebateTranscript, DebateTurn, Verdict
+from backend.models.debate import AgreementCheck, DebateTranscript, DebateTurn, Verdict
 from backend.models.routing import ContextBundle
 from backend.routing.policy_loader import load_policy_table
 from backend.routing.router import route
@@ -37,9 +46,9 @@ class DebateState(TypedDict):
     content: str
     api_key: str | None
     bundle: ContextBundle
-    round_number: int
-    advocate_turns: list[DebateTurn]
-    enforcer_turns: list[DebateTurn]
+    advocate_turn: DebateTurn
+    enforcer_turn: DebateTurn
+    agreement: AgreementCheck
     verdicts: Annotated[list[Verdict], operator.add]
     transcripts: Annotated[list[DebateTranscript], operator.add]
 
@@ -85,59 +94,110 @@ def hard_route_verdict_node(state: dict) -> dict:
     return {"verdicts": [verdict]}
 
 
-def debate_round_node(state: DebateState) -> dict:
+def debate_turn_node(state: DebateState) -> dict:
     client = get_instructor_client(state.get("api_key"))
     bundle = state["bundle"]
-    round_number = state.get("round_number", 0) + 1
 
-    advocate_turn = run_stance_turn(
-        client, "advocate", state["content"], bundle, state.get("advocate_turns", [])
+    advocate_turn = run_stance_turn(client, "advocate", state["content"], bundle, [])
+    enforcer_turn = run_stance_turn(client, "enforcer", state["content"], bundle, [])
+
+    return {"advocate_turn": advocate_turn, "enforcer_turn": enforcer_turn}
+
+
+def agreement_check_node(state: DebateState) -> dict:
+    client = get_instructor_client(state.get("api_key"))
+    agreement = check_agreement(
+        client, state["content"], state["bundle"], state["advocate_turn"], state["enforcer_turn"]
     )
-    enforcer_turn = run_stance_turn(
-        client, "enforcer", state["content"], bundle, state.get("enforcer_turns", [])
-    )
-
-    return {
-        "round_number": round_number,
-        "advocate_turns": state.get("advocate_turns", []) + [advocate_turn],
-        "enforcer_turns": state.get("enforcer_turns", []) + [enforcer_turn],
-    }
+    return {"agreement": agreement}
 
 
-def debate_continue_edge(state: DebateState) -> str:
-    advocate_turn = state["advocate_turns"][-1]
-    enforcer_turn = state["enforcer_turns"][-1]
-    if should_continue_debate(state["round_number"], advocate_turn, enforcer_turn):
-        return "debate_round"
+def agreement_routing_edge(state: DebateState) -> str:
+    if is_resolved(state["agreement"]):
+        return "resolve"
+    if state["bundle"].policy.escalate_on_tie:
+        return "fail_closed_escalate"
     return "judge"
+
+
+def resolve_node(state: DebateState) -> dict:
+    bundle = state["bundle"]
+    advocate_turn = state["advocate_turn"]
+    enforcer_turn = state["enforcer_turn"]
+    agreement = state["agreement"]
+    position = agreement.resolved_position
+
+    verdict = Verdict(
+        category=bundle.category,
+        decision=position,
+        confidence=min(advocate_turn.confidence, enforcer_turn.confidence) * (agreement.agreement_score / 100),
+        rationale=agreement.rationale,
+        cited_clauses=advocate_turn.cited_clauses + enforcer_turn.cited_clauses,
+        escalated=position == "escalate",
+        escalation_reason="agreement_escalated" if position == "escalate" else None,
+        agreement_score=agreement.agreement_score,
+    )
+    transcript = DebateTranscript(
+        category=bundle.category, advocate_turns=[advocate_turn], enforcer_turns=[enforcer_turn]
+    )
+    return {"verdicts": [verdict], "transcripts": [transcript]}
+
+
+def fail_closed_escalate_node(state: DebateState) -> dict:
+    bundle = state["bundle"]
+    advocate_turn = state["advocate_turn"]
+    enforcer_turn = state["enforcer_turn"]
+    agreement = state["agreement"]
+
+    verdict = Verdict(
+        category=bundle.category,
+        decision="escalate",
+        confidence=min(advocate_turn.confidence, enforcer_turn.confidence),
+        rationale=(
+            f"Advocate and Enforcer only scored {agreement.agreement_score}/100 on agreement "
+            f"(below the {AGREEMENT_THRESHOLD} threshold); this category fails closed on "
+            "unresolved disagreement rather than risking an automatic allow."
+        ),
+        cited_clauses=advocate_turn.cited_clauses + enforcer_turn.cited_clauses,
+        escalated=True,
+        escalation_reason="low_agreement",
+        agreement_score=agreement.agreement_score,
+    )
+    transcript = DebateTranscript(
+        category=bundle.category, advocate_turns=[advocate_turn], enforcer_turns=[enforcer_turn]
+    )
+    return {"verdicts": [verdict], "transcripts": [transcript]}
 
 
 def judge_node(state: DebateState) -> dict:
     client = get_instructor_client(state.get("api_key"))
-    verdict = reach_verdict(
-        client,
-        state["content"],
-        state["bundle"],
-        state["advocate_turns"][-1],
-        state["enforcer_turns"][-1],
-    )
+    advocate_turn = state["advocate_turn"]
+    enforcer_turn = state["enforcer_turn"]
+    verdict = reach_verdict(client, state["content"], state["bundle"], advocate_turn, enforcer_turn)
+    verdict = verdict.model_copy(update={"agreement_score": state["agreement"].agreement_score})
     transcript = DebateTranscript(
-        category=state["bundle"].category,
-        advocate_turns=state["advocate_turns"],
-        enforcer_turns=state["enforcer_turns"],
+        category=state["bundle"].category, advocate_turns=[advocate_turn], enforcer_turns=[enforcer_turn]
     )
     return {"verdicts": [verdict], "transcripts": [transcript]}
 
 
 def build_debate_subgraph() -> StateGraph:
     subgraph = StateGraph(DebateState)
-    subgraph.add_node("debate_round", debate_round_node)
+    subgraph.add_node("debate_turn", debate_turn_node)
+    subgraph.add_node("agreement_check", agreement_check_node)
+    subgraph.add_node("resolve", resolve_node)
+    subgraph.add_node("fail_closed_escalate", fail_closed_escalate_node)
     subgraph.add_node("judge", judge_node)
-    subgraph.set_entry_point("debate_round")
-    subgraph.add_conditional_edges("debate_round", debate_continue_edge, {
-        "debate_round": "debate_round",
+
+    subgraph.set_entry_point("debate_turn")
+    subgraph.add_edge("debate_turn", "agreement_check")
+    subgraph.add_conditional_edges("agreement_check", agreement_routing_edge, {
+        "resolve": "resolve",
+        "fail_closed_escalate": "fail_closed_escalate",
         "judge": "judge",
     })
+    subgraph.add_edge("resolve", END)
+    subgraph.add_edge("fail_closed_escalate", END)
     subgraph.add_edge("judge", END)
     return subgraph
 
