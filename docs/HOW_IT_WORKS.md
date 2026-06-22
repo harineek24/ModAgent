@@ -81,11 +81,14 @@ with everything else.
 
 ```mermaid
 flowchart TD
-    R1[The Advocate gives an opinion\nand a confidence level] --> R2[The Enforcer gives an opinion\nand a confidence level]
-    R2 --> AC[Agreement Check reads both arguments\nand scores agreement 0-100]
+    R1[The Advocate may optionally\nlook up policy wording first] --> R1b[The Advocate gives an opinion\nand a confidence level]
+    R1b --> R2[The Enforcer may optionally\nlook up policy wording first]
+    R2 --> R2b[The Enforcer gives an opinion\nand a confidence level]
+    R2b --> AC[Agreement Check reads both arguments\nand scores agreement 0-100]
     AC --> Check{"Did they substantively agree\n(score above threshold)?"}
     Check -->|Yes| Resolve[Use the agreed-on decision directly\nNo Judge call needed]
-    Check -->|No| J[Judge reads the full debate\nand picks allow or restrict]
+    Check -->|No| J0[Judge may optionally\nlook up policy wording first]
+    J0 --> J[Judge reads the full debate\nand picks allow or restrict]
 ```
 
 Each side states its opinion as one of exactly two words — "allow" or
@@ -98,14 +101,17 @@ for genuine, unresolved disagreement, which keeps the system both faster
 and more accurate.
 
 Before committing to an opinion, the Advocate, Enforcer, and Judge can
-each optionally look up the real policy wording — the full rubric and
-example cases for that category, or a search for the most precise clause
-to cite — instead of relying on what was paraphrased into the prompt.
-This is a local lookup against the policy table already loaded in
-memory, not a network call, so it doesn't add latency or extra cost risk;
-it's only used when a side actually decides it needs to check something.
-The Agreement Check does not use this lookup, since its job is to compare
-the two rationales already given, not to re-litigate policy wording.
+each optionally call a tool to look up the real policy wording at
+will — the full rubric and example cases for that category, or a search
+for the most precise clause to cite — instead of relying on what was
+paraphrased into the prompt. Nothing forces them to use it: each side
+decides for itself, turn by turn, whether it actually needs to check
+something before committing to an opinion, and most of the time it
+won't. This is a local lookup against the policy table already loaded
+in memory, not a network call, so reaching for it doesn't add latency or
+extra cost risk even when a side does use it. The Agreement Check does
+not get this tool, since its job is to compare the two rationales
+already given, not to re-litigate policy wording.
 
 ---
 
