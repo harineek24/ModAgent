@@ -9,10 +9,12 @@ dependencies = [
     "instructor>=1.5",
     "pydantic>=2.7",
     "pyyaml>=6.0",
-    "streamlit>=1.38",
 ]
 
 [project.optional-dependencies]
+ui = [
+    "streamlit>=1.38",
+]
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.110",
