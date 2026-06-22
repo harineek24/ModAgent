@@ -9,7 +9,7 @@ import instructor
 from groq import Groq
 
 from backend.clients.groq_client import DEFAULT_MODEL
-from backend.clients.retry_policy import MAX_RETRIES
+from backend.clients.retry_policy import MAX_RETRIES, retry_on_tool_use_failure
 from backend.debate.prompts import JUDGE_SYSTEM_PROMPT
 from backend.debate.tools import gather_tool_context
 from backend.models.debate import DebateTurn, Verdict
@@ -39,12 +39,14 @@ def reach_verdict(
     if tool_context:
         user_message += f"\n\nTool lookups you made:\n{tool_context}"
 
-    return client.chat.completions.create(
-        model=model,
-        response_model=Verdict,
-        max_retries=MAX_RETRIES,
-        messages=[
-            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+    return retry_on_tool_use_failure(
+        lambda: client.chat.completions.create(
+            model=model,
+            response_model=Verdict,
+            max_retries=MAX_RETRIES,
+            messages=[
+                {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_message},
+            ],
+        )
     )

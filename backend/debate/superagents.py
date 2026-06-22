@@ -11,7 +11,7 @@ import instructor
 from groq import Groq
 
 from backend.clients.groq_client import DEFAULT_MODEL
-from backend.clients.retry_policy import MAX_RETRIES
+from backend.clients.retry_policy import MAX_RETRIES, retry_on_tool_use_failure
 from backend.debate.prompts import ADVOCATE_SYSTEM_PROMPT, ENFORCER_SYSTEM_PROMPT
 from backend.models.debate import DebateTurn
 from backend.models.routing import ContextBundle
@@ -45,12 +45,14 @@ def run_stance_turn(
         f"Prior debate turns:\n{history or '(none yet)'}"
     )
 
-    return client.chat.completions.create(
-        model=model,
-        response_model=DebateTurn,
-        max_retries=MAX_RETRIES,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
+    return retry_on_tool_use_failure(
+        lambda: client.chat.completions.create(
+            model=model,
+            response_model=DebateTurn,
+            max_retries=MAX_RETRIES,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+        )
     )
