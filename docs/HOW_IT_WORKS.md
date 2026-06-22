@@ -257,7 +257,89 @@ standard in isolation.
 
 ---
 
-## Slide 9 — What's still worth improving
+## Slide 9 — How the debate is actually wired together (the "agent")
+
+There's no single monolithic agent loop here — the whole pipeline is one
+LangGraph state machine, built from small, independently testable nodes:
+
+```mermaid
+flowchart TD
+    A[intake_and_classify_node\nscores 15 categories] --> B[route_node\nplain-code sort, no AI]
+    B --> C{dispatch_to_debates\nfans out one Send per flagged category}
+    C -->|debatable| D[debate_subgraph\nruns once per category, in parallel]
+    C -->|non-debatable| E[hard_route_verdict_node\nimmediate restrict, no debate]
+    D --> F[debate_turn_node\nAdvocate, then Enforcer]
+    F --> G[agreement_check_node]
+    G -->|resolved| H[resolve_node]
+    G -->|not resolved| I[judge_node]
+    H --> Z[verdicts + transcripts]
+    I --> Z
+    E --> Z
+```
+
+A few wiring decisions worth calling out because they're easy to get wrong:
+
+- **Each category's debate is its own subgraph instance**, dispatched via
+  LangGraph's `Send` API rather than a loop. This is what lets every
+  flagged category's Advocate/Enforcer/Agreement Check run concurrently
+  instead of one after another — the parallelism is structural, not an
+  afterthought bolted on with threads.
+- **The subgraph only returns its fan-in keys (`verdicts`, `transcripts`)
+  to the parent**, never the shared `content`/`api_key` channels. Parallel
+  `Send` branches share those parent channels as plain last-value
+  channels; returning them from every branch would collide and raise
+  `INVALID_CONCURRENT_GRAPH_UPDATE`. This is enforced by
+  `make_debate_subgraph_node()`, not by convention.
+- **Routing decisions are plain Python, not graph nodes that call an
+  LLM.** `route_node` and `agreement_routing_edge` are deterministic
+  functions over already-computed scores — the only places an LLM gets
+  invoked are `intake_and_classify_node`, `debate_turn_node`,
+  `agreement_check_node`, and `judge_node`. Keeping routing logic out of
+  the LLM-touching nodes is what makes the graph's control flow testable
+  without mocking a model at all (see Slide 10's wiring tests).
+
+---
+
+## Slide 10 — How the test suite is organized
+
+The tests split cleanly along the same boundary the graph itself uses —
+deterministic logic vs. LLM-touching logic — so each layer can be tested
+honestly, without pretending a mock proves an LLM call reasons correctly:
+
+- **Unit tests** (`tests/unit/`) cover pure, deterministic logic with no
+  network or mocking needed: `test_policy_loader.py` checks the policy
+  table's structural invariants (every category has a row, every
+  critical-severity category is non-debatable, no empty rubrics);
+  `test_router.py` checks the plain-code sorting step from Slide 3 in
+  isolation.
+- **Integration tests** (`tests/integration/`) cover the LLM-touching
+  nodes, but with the LLM client itself stubbed out (`StubInstructorClient`,
+  `StubRawClient`) so the test validates the *wiring* — does
+  `check_agreement()` call the client and return its structured result
+  unmodified? does `is_resolved()` correctly require both score and
+  position? — not the quality of any particular model's reasoning.
+  `test_debate_graph.py` goes a step further and runs the whole compiled
+  graph end-to-end with every LLM call monkeypatched, to prove the fan-out,
+  conditional routing, and fan-in actually connect the way Slide 9's
+  diagram claims they do.
+- **The golden regression suite**
+  (`tests/integration/test_golden_router_regression.py`) is different in
+  kind: it replays every case in a public moderation-eval dataset
+  (`tests/golden/moderation_cases.json`, imported via
+  `tests/golden/import_openai_dataset.py`) through the real `route()`
+  function, with classification scores derived directly from each case's
+  known labels (1.0/0.0, no LLM call). This gives the routing step
+  combinatorial coverage across real-world label combinations that would
+  be impractical to hand-write, while still costing nothing and running
+  in milliseconds.
+
+The net effect: 221 tests currently pass, none of them require a live API
+key, and a broken wiring change (e.g. a routing edge pointing at the wrong
+node) fails loudly in CI before it ever reaches a real model call.
+
+---
+
+## Slide 11 — What's still worth improving
 
 - The agreement-score threshold that decides "aligned enough to resolve
   automatically" was chosen as a reasonable starting point. It has not yet
