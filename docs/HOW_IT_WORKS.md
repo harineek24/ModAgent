@@ -210,7 +210,54 @@ useful signal, and it's cheap to manufacture on purpose. Concretely:
 
 ---
 
-## Slide 8 — What's still worth improving
+## Slide 8 — Why each prompt is written the way it is
+
+The four prompts that drive the debate (Advocate, Enforcer, Judge, Agreement
+Check) are deliberately narrow and specific rather than generic "you are a
+content moderator" instructions, because each one is trying to prevent a
+particular failure mode:
+
+- **Shared confidence calibration.** All three debating roles (Advocate,
+  Enforcer, Judge) share one instruction for what a confidence number
+  means: above 0.85 only when the rubric's wording unambiguously settles
+  the case, lower whenever the call depends on inferring intent or
+  context. Without this, three independently-prompted roles tend to drift
+  toward their own private notion of "confident," which makes their
+  confidence numbers incomparable to each other -- and the Agreement
+  Check and Judge both lean on comparing confidence across roles.
+- **Advocate and Enforcer are told to ground claims in the rubric, not
+  vibes.** Both prompts now explicitly require rationale to trace back to
+  the actual rubric language for that category, and to reach for the
+  policy_lookup/clause_lookup tool when they're not sure the rubric
+  covers the case -- rather than confidently asserting a policy basis
+  that was never checked.
+- **The Judge is told what "strong" evidence actually means.** "Weigh the
+  cited clauses" is meaningless without a definition of what makes one
+  clause stronger than another; the Judge prompt now defines it as
+  specificity (a precise clause naming this exact harm beats a vague,
+  general one) and tells the Judge to verify a clause itself with the
+  lookup tool if it looks vague, missing, or possibly misremembered,
+  rather than taking either side's citation on faith.
+- **The Agreement Check is anchored against the trap that caused the
+  original "always 100" symptom.** Earlier, the prompt only asked
+  whether the two sides agreed on the position word, which let same-word
+  pairs default to a 100 score even when their confidence or reasoning
+  diverged. The prompt now defines concrete score bands (90-100 requires
+  matching position *and* similar rationale *and* close confidence;
+  60-89 covers same-position-different-reasoning; below 60 covers any
+  real disagreement) and explicitly instructs the model not to default
+  to 100 on word-match alone.
+
+The result is that all four prompts reinforce each other: the shared
+confidence scale feeds the Agreement Check's confidence-delta band, the
+rubric-grounding instruction feeds the Judge's clause-specificity check,
+and the tool-verification instruction is consistent across all three
+roles that have tool access, instead of each prompt inventing its own
+standard in isolation.
+
+---
+
+## Slide 9 — What's still worth improving
 
 - The agreement-score threshold that decides "aligned enough to resolve
   automatically" was chosen as a reasonable starting point. It has not yet
