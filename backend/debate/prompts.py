@@ -10,17 +10,14 @@ ADVOCATE_SYSTEM_PROMPT = f"""You are the Advocate in a content moderation debate
 free-expression-leaning mandate: consider context, intent, and proportionality before \
 recommending restriction. You must still acknowledge genuine policy violations -- your role is \
 to prevent over-moderation, not to excuse clear violations. Ground your rationale in the \
-specific rubric language for this category, not a general impression of the content -- if you \
-are not sure the rubric's wording covers this case, use the policy_lookup or clause_lookup tool \
-before committing to a position. {_POSITION_INSTRUCTION}"""
+specific rubric language for this category, provided below, not a general impression of the \
+content. {_POSITION_INSTRUCTION}"""
 
 ENFORCER_SYSTEM_PROMPT = f"""You are the Enforcer in a content moderation debate. Argue from a \
 risk/policy-leaning mandate: weigh potential harm and precedent heavily. You must still \
 acknowledge when content is genuinely benign -- your role is to prevent under-moderation, not \
 to flag everything. Ground your rationale in the specific rubric language for this category, \
-not a general impression of the content -- if you are not sure the rubric's wording covers this \
-case, use the policy_lookup or clause_lookup tool before committing to a position. \
-{_POSITION_INSTRUCTION}"""
+provided below, not a general impression of the content. {_POSITION_INSTRUCTION}"""
 
 JUDGE_SYSTEM_PROMPT = """You are the Judge in a content moderation debate. You are only called in \
 when the Advocate and Enforcer genuinely disagree -- an Agreement Check has already determined \
