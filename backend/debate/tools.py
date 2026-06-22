@@ -1,13 +1,14 @@
-"""Tools available to debate tenants (Advocate, Enforcer, Judge) for grounding
-their reasoning in the actual policy table instead of recalling rubric text
-from the prompt alone. Implemented as plain local Python functions over the
+"""Tools available to the Judge (backend/debate/judge.py) for grounding its
+verdict in the actual policy table instead of trusting either side's cited
+clause on faith. Implemented as plain local Python functions over the
 already-loaded policy table -- no network calls -- and exposed to the model
-via Groq's native function-calling so each tenant can call them only when it
-actually needs to.
+via Groq's native function-calling. Advocate/Enforcer don't use this -- see
+backend/debate/superagents.py for why.
 """
 
 import json
 
+import groq
 from groq import Groq
 
 from backend.models.category import Category
@@ -97,9 +98,16 @@ def gather_tool_context(raw_client: Groq, model: str, system_prompt: str, user_m
     context_lines: list[str] = []
 
     for _ in range(MAX_TOOL_ROUNDS):
-        response = raw_client.chat.completions.create(
-            model=model, messages=messages, tools=TOOL_SCHEMAS, tool_choice="auto"
-        )
+        try:
+            response = raw_client.chat.completions.create(
+                model=model, messages=messages, tools=TOOL_SCHEMAS, tool_choice="auto"
+            )
+        except groq.BadRequestError:
+            # Some models occasionally emit a malformed tool call Groq can't
+            # parse (tool_use_failed) instead of a normal response. Treat that
+            # the same as "chose not to use a tool" rather than crashing the
+            # whole debate over an optional lookup.
+            break
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None)
         if not tool_calls:

@@ -6,6 +6,9 @@ LLM reasoning quality.
 
 import json
 
+import groq
+import httpx
+
 from backend.debate.tools import clause_lookup, gather_tool_context, policy_lookup
 from backend.models.category import Category
 
@@ -56,7 +59,9 @@ class StubToolCall:
 
 class StubRawClient:
     """Stub raw Groq client that returns a scripted sequence of responses,
-    one per call to chat.completions.create().
+    one per call to chat.completions.create(). Entries that are exceptions
+    are raised instead of returned, to simulate provider-side failures like
+    a malformed tool call.
     """
 
     def __init__(self, responses):
@@ -67,12 +72,20 @@ class StubRawClient:
             def create(_self, **kwargs):
                 response = self._responses[self.calls]
                 self.calls += 1
+                if isinstance(response, Exception):
+                    raise response
                 return response
 
         class _Chat:
             completions = _Completions()
 
         self.chat = _Chat()
+
+
+def _bad_request_error(message: str) -> groq.BadRequestError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+    return groq.BadRequestError(message, response=response, body=None)
 
 
 class StubResponse:
@@ -122,3 +135,16 @@ def test_gather_tool_context_stops_after_max_rounds():
     gather_tool_context(client, "model", "system prompt", "user message")
 
     assert client.calls == 2
+
+
+def test_gather_tool_context_degrades_gracefully_on_malformed_tool_call():
+    error = _bad_request_error(
+        "Failed to call a function. Please adjust your prompt. "
+        "See 'failed_generation' for more details."
+    )
+    client = StubRawClient([error])
+
+    context = gather_tool_context(client, "model", "system prompt", "user message")
+
+    assert context == ""
+    assert client.calls == 1

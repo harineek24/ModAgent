@@ -1,8 +1,10 @@
 """Superagent nodes: each is an LLM-boundary call producing one DebateTurn for a
-given stance, scoped to a single category's ContextBundle. Each stance may
-optionally call policy_lookup/clause_lookup (backend/debate/tools.py) before
-committing to a position, grounding its rationale in real rubric/example text
-instead of recalling it from the prompt alone.
+given stance, scoped to a single category's ContextBundle. Advocate/Enforcer
+ground their rationale in the rubric text already included in the prompt --
+they don't get the optional policy_lookup/clause_lookup round-trip that the
+Judge gets (backend/debate/judge.py), since paying for an extra LLM call on
+every single turn just to ask "do you want to look something up?" doubled
+API usage for the common case where the answer is no.
 """
 
 import instructor
@@ -11,7 +13,6 @@ from groq import Groq
 from backend.clients.groq_client import DEFAULT_MODEL
 from backend.clients.retry_policy import MAX_RETRIES
 from backend.debate.prompts import ADVOCATE_SYSTEM_PROMPT, ENFORCER_SYSTEM_PROMPT
-from backend.debate.tools import gather_tool_context
 from backend.models.debate import DebateTurn
 from backend.models.routing import ContextBundle
 
@@ -43,10 +44,6 @@ def run_stance_turn(
         f"Rubric: {bundle.policy.rubric}\n\n"
         f"Prior debate turns:\n{history or '(none yet)'}"
     )
-
-    tool_context = gather_tool_context(raw_client, model, system_prompt, user_message)
-    if tool_context:
-        user_message += f"\n\nTool lookups you made:\n{tool_context}"
 
     return client.chat.completions.create(
         model=model,
