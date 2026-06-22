@@ -101,6 +101,16 @@ resolve in just two AI calls (Advocate, Enforcer) plus one Agreement
 Check call — the Judge is only brought in for genuine, unresolved
 disagreement, which keeps the system both faster and more accurate.
 
+Before committing to an opinion, the Advocate, Enforcer, and Judge can
+each optionally look up the real policy wording — the full rubric and
+example cases for that category, or a search for the most precise clause
+to cite — instead of relying on what was paraphrased into the prompt.
+This is a local lookup against the policy table already loaded in
+memory, not a network call, so it doesn't add latency or extra cost risk;
+it's only used when a side actually decides it needs to check something.
+The Agreement Check does not use this lookup, since its job is to compare
+the two rationales already given, not to re-litigate policy wording.
+
 ---
 
 ## Slide 5 — Why a result sometimes says "needs human review"

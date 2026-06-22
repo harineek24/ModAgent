@@ -22,7 +22,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.types import Send
 
 from backend.classification.classifier import classify
-from backend.clients.groq_client import get_instructor_client
+from backend.clients.groq_client import get_instructor_client, get_raw_client
 from backend.debate.agreement import AGREEMENT_THRESHOLD, check_agreement, is_resolved
 from backend.debate.judge import reach_verdict
 from backend.debate.superagents import run_stance_turn
@@ -96,10 +96,11 @@ def hard_route_verdict_node(state: dict) -> dict:
 
 def debate_turn_node(state: DebateState) -> dict:
     client = get_instructor_client(state.get("api_key"))
+    raw_client = get_raw_client(state.get("api_key"))
     bundle = state["bundle"]
 
-    advocate_turn = run_stance_turn(client, "advocate", state["content"], bundle, [])
-    enforcer_turn = run_stance_turn(client, "enforcer", state["content"], bundle, [])
+    advocate_turn = run_stance_turn(client, raw_client, "advocate", state["content"], bundle, [])
+    enforcer_turn = run_stance_turn(client, raw_client, "enforcer", state["content"], bundle, [])
 
     return {"advocate_turn": advocate_turn, "enforcer_turn": enforcer_turn}
 
@@ -171,9 +172,10 @@ def fail_closed_escalate_node(state: DebateState) -> dict:
 
 def judge_node(state: DebateState) -> dict:
     client = get_instructor_client(state.get("api_key"))
+    raw_client = get_raw_client(state.get("api_key"))
     advocate_turn = state["advocate_turn"]
     enforcer_turn = state["enforcer_turn"]
-    verdict = reach_verdict(client, state["content"], state["bundle"], advocate_turn, enforcer_turn)
+    verdict = reach_verdict(client, raw_client, state["content"], state["bundle"], advocate_turn, enforcer_turn)
     verdict = verdict.model_copy(update={"agreement_score": state["agreement"].agreement_score})
     transcript = DebateTranscript(
         category=state["bundle"].category, advocate_turns=[advocate_turn], enforcer_turns=[enforcer_turn]

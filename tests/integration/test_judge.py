@@ -28,6 +28,32 @@ class StubInstructorClient:
         self.chat = _Chat()
 
 
+class StubRawClient:
+    """Stub for the plain Groq client used for tool-calling. Returns a
+    response with no tool_calls, so gather_tool_context() short-circuits
+    immediately without making any extra calls.
+    """
+
+    def __init__(self):
+        class _Message:
+            tool_calls = None
+
+        class _Choice:
+            message = _Message()
+
+        class _Response:
+            choices = [_Choice()]
+
+        class _Completions:
+            def create(_self, **kwargs):
+                return _Response()
+
+        class _Chat:
+            completions = _Completions()
+
+        self.chat = _Chat()
+
+
 def make_bundle(policy_table, category: Category, score: float = 0.8) -> ContextBundle:
     return ContextBundle(category=category, policy=policy_table[category], score=score)
 
@@ -56,7 +82,7 @@ def test_reach_verdict_calls_llm_and_returns_its_verdict(policy_table):
     advocate = make_turn("advocate", "allow", 0.6)
     enforcer = make_turn("enforcer", "restrict", 0.6)
 
-    verdict = reach_verdict(client, "content", bundle, advocate, enforcer)
+    verdict = reach_verdict(client, StubRawClient(), "content", bundle, advocate, enforcer)
 
     assert client.called is True
     assert verdict == expected_verdict
@@ -76,7 +102,7 @@ def test_llm_escalate_decision_gets_judge_escalated_reason(policy_table):
     advocate = make_turn("advocate", "allow", 0.5)
     enforcer = make_turn("enforcer", "restrict", 0.5)
 
-    verdict = reach_verdict(client, "content", bundle, advocate, enforcer)
+    verdict = reach_verdict(client, StubRawClient(), "content", bundle, advocate, enforcer)
 
     assert verdict.escalation_reason == "judge_escalated"
 
@@ -95,7 +121,7 @@ def test_llm_verdict_with_explicit_reason_is_not_overwritten(policy_table):
     advocate = make_turn("advocate", "allow", 0.5)
     enforcer = make_turn("enforcer", "restrict", 0.5)
 
-    verdict = reach_verdict(client, "content", bundle, advocate, enforcer)
+    verdict = reach_verdict(client, StubRawClient(), "content", bundle, advocate, enforcer)
 
     assert verdict.decision == "allow"
     assert verdict.escalation_reason is None

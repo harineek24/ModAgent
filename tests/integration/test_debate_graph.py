@@ -157,9 +157,10 @@ def mocked_graph(monkeypatch, debatable_bundle, hard_routed_bundle):
     fake_classification = ClassificationResult(scores=scores, detected_language="en")
 
     monkeypatch.setattr(graph_module, "get_instructor_client", lambda api_key=None: object())
+    monkeypatch.setattr(graph_module, "get_raw_client", lambda api_key=None: object())
     monkeypatch.setattr(graph_module, "classify", lambda client, content: fake_classification)
 
-    def fake_run_stance_turn(client, stance, content, bundle, prior_turns, model=None):
+    def fake_run_stance_turn(client, raw_client, stance, content, bundle, prior_turns, model=None):
         return DebateTurn(stance=stance, position="restrict", confidence=0.95, rationale="agreed")
 
     def fake_check_agreement(client, content, bundle, advocate_turn, enforcer_turn, model=None):
@@ -206,6 +207,7 @@ def test_full_graph_hard_routed_category_has_no_transcript(mocked_graph):
 def test_full_graph_with_benign_content_produces_no_verdicts(monkeypatch):
     benign_classification = ClassificationResult(scores={c: 0.0 for c in Category}, detected_language="en")
     monkeypatch.setattr(graph_module, "get_instructor_client", lambda api_key=None: object())
+    monkeypatch.setattr(graph_module, "get_raw_client", lambda api_key=None: object())
     monkeypatch.setattr(graph_module, "classify", lambda client, content: benign_classification)
 
     compiled = graph_module.build_graph().compile()
@@ -219,16 +221,17 @@ def test_full_graph_low_agreement_falls_through_to_judge(monkeypatch, tie_safe_b
     fake_classification = ClassificationResult(scores=scores, detected_language="en")
 
     monkeypatch.setattr(graph_module, "get_instructor_client", lambda api_key=None: object())
+    monkeypatch.setattr(graph_module, "get_raw_client", lambda api_key=None: object())
     monkeypatch.setattr(graph_module, "classify", lambda client, content: fake_classification)
 
-    def fake_run_stance_turn(client, stance, content, bundle, prior_turns, model=None):
+    def fake_run_stance_turn(client, raw_client, stance, content, bundle, prior_turns, model=None):
         position = "allow" if stance == "advocate" else "restrict"
         return DebateTurn(stance=stance, position=position, confidence=0.9, rationale="r")
 
     def fake_check_agreement(client, content, bundle, advocate_turn, enforcer_turn, model=None):
         return AgreementCheck(agreement_score=15, resolved_position=None, rationale="opposed")
 
-    def fake_reach_verdict(client, content, bundle, advocate_turn, enforcer_turn, model=None):
+    def fake_reach_verdict(client, raw_client, content, bundle, advocate_turn, enforcer_turn, model=None):
         return Verdict(
             category=bundle.category, decision="restrict", confidence=0.8, rationale="judge weighed it",
             cited_clauses=[], escalated=False,

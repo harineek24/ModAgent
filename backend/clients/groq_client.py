@@ -22,9 +22,16 @@ def get_instructor_client(api_key: str | None = None) -> instructor.Instructor:
     underlying Groq client's create() call, which collides with instructor's own
     max_retries handling if passed at construction time.
     """
+    return instructor.from_groq(get_raw_client(api_key), mode=instructor.Mode.JSON)
+
+
+def get_raw_client(api_key: str | None = None) -> Groq:
+    """Returns a plain (non-Instructor) Groq client, for calls that need native
+    tool/function-calling rather than schema-only structured output -- e.g. the
+    tool-use round-trip in backend/debate/tools.py.
+    """
     resolved_key = api_key or os.environ.get("GROQ_API_KEY")
     if not resolved_key:
         raise ModAgentError("No Groq API key provided (pass api_key or set GROQ_API_KEY).")
 
-    raw_client = Groq(api_key=resolved_key)
-    return instructor.from_groq(raw_client, mode=instructor.Mode.JSON)
+    return Groq(api_key=resolved_key)
