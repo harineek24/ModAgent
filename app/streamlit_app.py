@@ -27,8 +27,7 @@ content, submitted = render_input_panel()
 
 with st.expander("How it works (slides)", expanded=False):
     st.components.v1.iframe(
-        "https://docs.google.com/presentation/d/1Wy2DVZFjEYhjYiiVLLSDp982okS5mRRUqgTQhFyHLPU/embed"
-        "?start=false&loop=false&delayms=3000",
+        "https://docs.google.com/presentation/d/1Wy2DVZFjEYhjYiiVLLSDp982okS5mRRUqgTQhFyHLPU/edit?usp=sharing",
         height=480,
     )
 
