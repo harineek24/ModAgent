@@ -25,6 +25,13 @@ with st.sidebar:
 
 content, submitted = render_input_panel()
 
+with st.expander("How it works (slides)", expanded=False):
+    st.components.v1.iframe(
+        "https://docs.google.com/presentation/d/1Wy2DVZFjEYhjYiiVLLSDp982okS5mRRUqgTQhFyHLPU/embed"
+        "?start=false&loop=false&delayms=3000",
+        height=480,
+    )
+
 if submitted and not st.session_state.groq_api_key:
     st.error("Enter a Groq API key in the sidebar first.")
 elif submitted and content.strip():
